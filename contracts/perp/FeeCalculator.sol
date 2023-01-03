@@ -10,19 +10,17 @@ import "../access/Governable.sol";
 contract FeeCalculator is Governable {
 
     uint256 public constant PRICE_BASE = 10000;
-    uint256 public baseFee = 10;
     address public owner;
     address public keeper;
     bool public isDiscountEnabled = false;
     mapping (address => uint256) public accountFeeDiscount;
 
     uint256 public MAX_ACCOUNT_DISCOUNT = 5000; // 50%
-    uint256 public MAX_SENDER_DISCOUNT = 9000; // 90%
 
     event SetIsDiscountEnabled(bool isDiscountEnabled);
-    event SetDiscountForAccount(address account, uint256 discount);
-    event SetOwner(address owner);
-    event SetKeeper(address keeper);
+    event SetDiscountForAccount(address indexed account, uint256 discount);
+    event SetOwner(address indexed owner);
+    event SetKeeper(address indexed keeper);
 
     constructor() public {
         owner = msg.sender;
@@ -30,7 +28,7 @@ contract FeeCalculator is Governable {
     }
 
     /**
-     * @notice Get the fee for a token for an account and sender.
+     * @notice Get the fee for a token for an account
      * @param token the underlying token for a product
      * @param productFee the default fee for a product
      * @param account the account to open position for. Some accounts may have discount in fees.
@@ -45,15 +43,30 @@ contract FeeCalculator is Governable {
         return fee;
     }
 
+    function getDiscounts(address[] calldata accounts) external view returns(uint256[] memory discounts) {
+        uint256[] memory discounts = new uint[](accounts.length);
+        for (uint256 i = 0; i < accounts.length; i++) {
+            discounts[i] = accountFeeDiscount[accounts[i]];
+        }
+        return discounts;
+    }
+
     function setIsDiscountEnabled(bool _isDiscountEnabled) external onlyOwner {
         isDiscountEnabled = _isDiscountEnabled;
         emit SetIsDiscountEnabled(_isDiscountEnabled);
     }
 
-    function setDiscountForAccount(address _account, uint256 _discount) external onlyKeeper {
+    function setDiscountForAccount(address _account, uint256 _discount) public onlyKeeper {
         require(_discount <= MAX_ACCOUNT_DISCOUNT);
         accountFeeDiscount[_account] = _discount;
         emit SetDiscountForAccount(_account, _discount);
+    }
+
+    function setDiscounts(address[] calldata _accounts, uint256[] calldata _discounts) external {
+        require(_accounts.length == _discounts.length, "not same length");
+        for (uint256 i = 0; i < _accounts.length; i++) {
+            setDiscountForAccount(_accounts[i], _discounts[i]);
+        }
     }
 
     function setOwner(address _owner) external onlyGov {
