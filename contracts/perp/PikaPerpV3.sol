@@ -537,9 +537,7 @@ contract PikaPerpV3 is ReentrancyGuard {
         _updateFundingAndOpenInterest(uint256(position.productId), uint256(position.margin) * uint256(position.leverage) / BASE, position.isLong, false);
         int256 fundingPayment = PerpLib._getFundingPayment(fundingManager, position.isLong, position.productId, position.leverage, position.margin, position.funding);
         int256 pnl = PerpLib._getPnl(position.isLong, position.price, position.leverage, position.margin, price) - fundingPayment;
-        if (pnl >= 0 || uint256(-1 * pnl) < uint256(position.margin) * liquidationThreshold / (10**4)) {
-            return 0;
-        }
+        require (pnl < 0 && uint256(-1 * pnl) >= uint256(position.margin) * liquidationThreshold / (10**4));
         if (uint256(position.margin) > uint256(-1*pnl)) {
             uint256 _pnl = uint256(-1*pnl);
             liquidatorReward = (uint256(position.margin) - _pnl) * liquidationBounty / (10**4);
