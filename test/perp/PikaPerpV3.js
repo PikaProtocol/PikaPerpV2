@@ -104,7 +104,8 @@ describe("Trading", () => {
 		await pika.setTransfersAllowed(true);
 
 		const feeCalculatorContract = await ethers.getContractFactory("FeeCalculator");
-		feeCalculator = await feeCalculatorContract.deploy(40, 9000, oracle.address);
+		feeCalculator = await feeCalculatorContract.deploy();
+		// feeCalculator = await feeCalculatorContract.deploy(40, 9000, oracle.address);
 		// await feeCalculator.setFeeTier([1000, 10000, 100000, 500000, 1000000, 2500000, 5000000], [0, 500, 1500, 2500, 3500, 4000, 4500, 0])
 
 		const tradingContract = await ethers.getContractFactory("PikaPerpV3");
@@ -142,7 +143,7 @@ describe("Trading", () => {
 		positionManager = await positionManagerContract.deploy(trading.address, feeCalculator.address, oracle.address, usdc.address, "100000", "1000000");
 
 		const liquidatorContract = await ethers.getContractFactory("Liquidator");
-		liquidator = await liquidatorContract.deploy(trading.address, oracle.address, fundingManager.address, addrs[2].address);
+		liquidator = await liquidatorContract.deploy(trading.address, usdc.address, oracle.address, fundingManager.address, addrs[2].address);
 		await liquidator.connect(owner).setLiquidator(owner.address, true)
 
 		let v = [
