@@ -5,19 +5,18 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
-import '../staking/PikaMine.sol';
 import "../access/Governable.sol";
+import "./IPikaStaking.sol";
 
-/** @title VePikaTokenReward
-    @notice Contract to distribute token rewards for vePIKA holders. Adapted from: https://github.com/ribbon-finance/governance/blob/main/contracts/rbn-staking/VeRBNRewards.sol
+/** @title PikaTokenReward
+    @notice Contract to distribute token rewards for PIKA holders. Adapted from: https://github.com/ribbon-finance/governance/blob/main/contracts/rbn-staking/VeRBNRewards.sol
  */
 
-contract VePikaTokenReward is Governable, ReentrancyGuard {
+contract PikaTokenReward is Governable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
-    IERC20 public rewardToken; // immutable are breaking coverage software should be added back after.
-    IERC20 public veToken; // immutable
-    PikaMine public pikaMine;
+    address public immutable rewardToken;
+    address public pikaStaking;
     uint256 public duration = 30 days;
     uint256 public periodFinish = 0;
     uint256 public rewardRate = 0;
@@ -33,15 +32,14 @@ contract VePikaTokenReward is Governable, ReentrancyGuard {
     event RewardAdded(uint256 reward);
     event RewardPaid(address indexed user, uint256 reward);
     event UpdatedAdmin(address admin);
+    event SetPikaStaking(address pikaStaking);
 
     constructor(
-        address veToken_,
-        address rewardToken_,
-        address pikaMine_
+        address _pikaStaking,
+        address _rewardToken
     ) {
-        veToken = IERC20(veToken_);
-        rewardToken = IERC20(rewardToken_);
-        pikaMine = PikaMine(pikaMine_);
+        pikaStaking = _pikaStaking;
+        rewardToken = _rewardToken;
         admin = msg.sender;
     }
 
@@ -67,19 +65,15 @@ contract VePikaTokenReward is Governable, ReentrancyGuard {
      *  @return rewardPerToken
      */
     function rewardPerToken() public view returns (uint256) {
-        uint256 supply = veToken.totalSupply();
+        uint256 supply = IPikaStaking(pikaStaking).totalSupply();
         if (supply == 0) {
             return rewardPerTokenStored;
         }
-        return
-        rewardPerTokenStored +
-        (((lastTimeRewardApplicable() - lastUpdateTime) *
-        rewardRate *
-        1e18) / supply);
+        return rewardPerTokenStored + (((lastTimeRewardApplicable() - lastUpdateTime) * rewardRate * 1e18) / supply);
     }
 
     function _earnedReward(address account) internal view returns (uint256) {
-        return (veToken.balanceOf(account) * (rewardPerToken() - userRewardPerTokenPaid[account])) / 1e18 + rewards[account];
+        return (IPikaStaking(pikaStaking).balanceOf(account) * (rewardPerToken() - userRewardPerTokenPaid[account])) / 1e18 + rewards[account];
     }
 
     /** @notice earning for an account
@@ -89,17 +83,12 @@ contract VePikaTokenReward is Governable, ReentrancyGuard {
         return _earnedReward(account);
     }
 
-    /** @notice use to update rewards on vePIKA balance changes.
-        @dev called by vePIKA
+    /** @notice use to update rewards on PIKA staking balance changes.
+        @dev called by Pika Staking contract
      *  @return true
      */
-    function updateReward(address _account)
-    external
-    _updateReward(_account)
-    returns (bool)
-    {
-        require(msg.sender == address(pikaMine), "!authorized");
-
+    function updateReward(address _account) external _updateReward(_account) returns (bool) {
+        require(msg.sender == pikaStaking, "!authorized");
         return true;
     }
 
@@ -111,14 +100,11 @@ contract VePikaTokenReward is Governable, ReentrancyGuard {
         _getReward(msg.sender);
     }
 
-    function _getReward(address _account)
-    internal
-    _updateReward(_account)
-    {
+    function _getReward(address _account) internal _updateReward(_account) {
         uint256 reward = rewards[_account];
         if (reward == 0) return;
         rewards[_account] = 0;
-        SafeERC20.safeTransfer(rewardToken, _account, reward);
+        SafeERC20.safeTransfer(IERC20(rewardToken), _account, reward);
 
         emit RewardPaid(_account, reward);
     }
@@ -142,10 +128,7 @@ contract VePikaTokenReward is Governable, ReentrancyGuard {
         return true;
     }
 
-    function _notifyRewardAmount(uint256 reward)
-    internal
-    _updateReward(address(0))
-    {
+    function _notifyRewardAmount(uint256 reward) internal _updateReward(address(0)) {
         historicalRewards = historicalRewards + reward;
         if (block.timestamp >= periodFinish) {
             rewardRate = reward / duration;
@@ -168,6 +151,12 @@ contract VePikaTokenReward is Governable, ReentrancyGuard {
         emit RewardDurationUpdated(_duration);
     }
 
+    function setPikaStaking(address _pikaStaking) external {
+        require(msg.sender == admin, "!authorized");
+        pikaStaking = _pikaStaking;
+        emit SetPikaStaking(_pikaStaking);
+    }
+
     function setAdmin(address _admin) external onlyGov returns (bool) {
         require(_admin != address(0), "0 address");
         admin = _admin;
@@ -177,10 +166,7 @@ contract VePikaTokenReward is Governable, ReentrancyGuard {
 
     function sweep(address _token) external returns (bool) {
         require(msg.sender == admin, "!authorized");
-        require(
-            _token != address(rewardToken) || pikaMine.isUnlocked(),
-            "!rewardToken"
-        );
+        require(_token != rewardToken, "rewardToken");
 
         SafeERC20.safeTransfer(
             IERC20(_token),

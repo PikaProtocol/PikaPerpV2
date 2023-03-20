@@ -25,7 +25,7 @@ contract Vester is Ownable {
     address public pika;
     address public treasury;
     uint256 public vestingPeriod = 365 days;
-    uint256 public initialClaimFee = 8000; // 80%
+    uint256 public initialClaimFee = 9000; // 90%
     uint256 public totalEsPikaDeposit;
     uint256 public totalPikaClaimed;
     uint256 public totalClaimFee;
@@ -54,16 +54,24 @@ contract Vester is Ownable {
         treasury = _treasury;
     }
 
-    /** @notice Deposit esPIKA for vesting.
+    /**
+     * @notice Deposit esPIKA for vesting.
      */
     function deposit(uint256 _amount) external {
+        depositFor(_amount, msg.sender);
+    }
+
+    /**
+     * @notice Deposit esPIKA to vest for _to address.
+     */
+    function depositFor(uint256 _amount, address _to) public {
         IERC20(esPika).safeTransferFrom(msg.sender, address(this), _amount);
-        (UserInfo storage user, uint256 depositId) = _addDeposit(msg.sender);
+        (UserInfo storage user, uint256 depositId) = _addDeposit(_to);
         totalEsPikaDeposit += _amount;
         user.depositAmount = _amount;
         user.vestedUntil = block.timestamp + vestingPeriod;
         user.vestingStartTime = block.timestamp;
-        emit Deposit(msg.sender, depositId, _amount);
+        emit Deposit(_to, depositId, _amount);
     }
 
     /**

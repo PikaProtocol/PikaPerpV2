@@ -2,37 +2,24 @@
 pragma solidity ^0.8.0;
 
 import '@openzeppelin/contracts/token/ERC20/ERC20.sol';
-import '@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol';
-import '@openzeppelin/contracts/access/Ownable.sol';
-import '@openzeppelin/contracts/utils/math/SafeCast.sol';
-import '../staking/PikaMine.sol';
+import '../staking/IPikaStaking.sol';
 
 /** @title VePika
     @notice Vote escrowed non-transferable token
  */
 contract VePika is ERC20 {
-    PikaMine public pikaMine;
+    IPikaStaking public pikaStaking;
 
-    constructor(address _pikaMine) ERC20("Vote Escrowed Pika", "vePIKA") {
-        pikaMine = PikaMine(_pikaMine);
+    constructor(address _pikaStaking) ERC20("Vote Escrowed Pika", "vePIKA") {
+        pikaStaking = IPikaStaking(_pikaStaking);
     }
 
     function totalSupply() public view override returns (uint256) {
-        return pikaMine.totalLpToken();
+        return pikaStaking.totalSupply();
     }
 
     function balanceOf(address _account) public view override returns (uint256) {
-        uint256 accountBalance = 0;
-        uint256[] memory allUserDepositIds = pikaMine.getAllUserDepositIds(_account);
-        uint256 len = allUserDepositIds.length;
-        for (uint256 i = 0; i < len; i++) {
-            uint256 depositId = allUserDepositIds[i];
-            (uint256 depositAmount,,,PikaMine.Lock lock) = pikaMine.userInfo(_account, depositId);
-            (uint256 lockBoost, ) = pikaMine.getLockBoost(lock);
-            uint256 lpAmount = depositAmount * lockBoost / pikaMine.ONE();
-            accountBalance += lpAmount;
-        }
-        return accountBalance;
+        return pikaStaking.balanceOf(_account);
     }
 
     function _beforeTokenTransfer(
