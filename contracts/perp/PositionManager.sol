@@ -443,18 +443,19 @@ contract PositionManager is Governable, ReentrancyGuard {
         OpenPositionRequest memory request = openPositionRequests[_key];
         // if the request was already executed or cancelled, return true so that the executeOpenPositions loop will continue executing the next request
         if (request.account == address(0)) { return true; }
-
-        bool shouldExecute = _validateExecution(request.blockNumber, request.blockTime, request.account, request.productId, true, request.isLong, request.acceptablePrice);
+        (address productToken,,,,,,,,) = IPikaPerp(pikaPerp).getProduct(request.productId);
+        uint256 oraclePrice = request.isLong ? IOracle(oracle).getPrice(productToken, true) : IOracle(oracle).getPrice(productToken, false);
+        bool shouldExecute = _validateExecution(request.blockNumber, request.blockTime, request.account, true, request.isLong, request.acceptablePrice, oraclePrice);
         if (!shouldExecute) { return false; }
 
         delete openPositionRequests[_key];
 
         if (IERC20(collateralToken).isETH()) {
-            IPikaPerp(pikaPerp).openPosition{value: (request.margin + request.tradeFee) * tokenBase / BASE }(request.account, request.productId, request.margin, request.isLong, request.leverage);
+            IPikaPerp(pikaPerp).openPosition{value: (request.margin + request.tradeFee) * tokenBase / BASE }(request.account, request.productId, request.margin, request.isLong, request.leverage, oraclePrice);
         } else {
             IERC20(collateralToken).safeApprove(pikaPerp, 0);
             IERC20(collateralToken).safeApprove(pikaPerp, (request.margin + request.tradeFee) * tokenBase / BASE);
-            IPikaPerp(pikaPerp).openPosition(request.account, request.productId, request.margin, request.isLong, request.leverage);
+            IPikaPerp(pikaPerp).openPosition(request.account, request.productId, request.margin, request.isLong, request.leverage, oraclePrice);
         }
 
         _executionFeeReceiver.sendValue(request.executionFee * 1e18 / BASE);
@@ -515,13 +516,14 @@ contract PositionManager is Governable, ReentrancyGuard {
         ClosePositionRequest memory request = closePositionRequests[_key];
         // if the request was already executed or cancelled, return true so that the executeClosePositions loop will continue executing the next request
         if (request.account == address(0)) { return true; }
-
-        bool shouldExecute = _validateExecution(request.blockNumber, request.blockTime, request.account, request.productId, false, !request.isLong, request.acceptablePrice);
+        (address productToken,,,,,,,,) = IPikaPerp(pikaPerp).getProduct(request.productId);
+        uint256 oraclePrice = !request.isLong ? IOracle(oracle).getPrice(productToken, true) : IOracle(oracle).getPrice(productToken, false);
+        bool shouldExecute = _validateExecution(request.blockNumber, request.blockTime, request.account, false, !request.isLong, request.acceptablePrice, oraclePrice);
         if (!shouldExecute) { return false; }
 
         delete closePositionRequests[_key];
 
-        IPikaPerp(pikaPerp).closePosition(request.account, request.productId, request.margin , request.isLong);
+        IPikaPerp(pikaPerp).closePosition(request.account, request.productId, request.margin , request.isLong, oraclePrice);
 
         _executionFeeReceiver.sendValue(request.executionFee * 1e18 / BASE);
 
@@ -602,7 +604,7 @@ contract PositionManager is Governable, ReentrancyGuard {
     }
 
     function _validateExecution(uint256 _positionBlockNumber, uint256 _positionBlockTime, address _account,
-        uint256 _productId, bool _isOpen, bool _isLong, uint256 _acceptablePrice
+        bool _isOpen, bool _isLong, uint256 _acceptablePrice, uint256 _oraclePrice
     ) internal view returns (bool) {
         if (_positionBlockTime.add(maxTimeDelay) <= block.timestamp) {
             revert("PositionManager: request has expired");
@@ -615,12 +617,10 @@ contract PositionManager is Governable, ReentrancyGuard {
         }
 
         if (isKeeperCall) {
-            (address productToken,,,,,,,,) = IPikaPerp(pikaPerp).getProduct(_productId);
-            uint256 price = _isLong ? IOracle(oracle).getPrice(productToken, true) : IOracle(oracle).getPrice(productToken, false);
             if (_isLong) {
-                require(price <= _acceptablePrice, "PositionManager: current price too low");
+                require(_oraclePrice <= _acceptablePrice, "PositionManager: current price too low");
             } else {
-                require(price >= _acceptablePrice, "PositionManager: current price too high");
+                require(_oraclePrice >= _acceptablePrice, "PositionManager: current price too high");
             }
             return isPriceKeeperCall ? _positionBlockNumber.add(minBlockDelayPriceKeeper) <= block.number :
                 _positionBlockNumber.add(minBlockDelayPositionKeeper) <= block.number;

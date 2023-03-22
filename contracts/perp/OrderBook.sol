@@ -475,11 +475,11 @@ contract OrderBook is Governable, ReentrancyGuard {
         delete openOrders[_address][_orderIndex];
 
         if (IERC20(collateralToken).isETH()) {
-            IPikaPerp(pikaPerp).openPosition{value: (order.margin + order.tradeFee) * tokenBase / BASE }(_address, order.productId, order.margin, order.isLong, order.leverage);
+            IPikaPerp(pikaPerp).openPosition{value: (order.margin + order.tradeFee) * tokenBase / BASE }(_address, order.productId, order.margin, order.isLong, order.leverage, currentPrice);
         } else {
             IERC20(collateralToken).safeApprove(pikaPerp, 0);
             IERC20(collateralToken).safeApprove(pikaPerp, (order.margin + order.tradeFee) * tokenBase / BASE);
-            IPikaPerp(pikaPerp).openPosition(_address, order.productId, order.margin, order.isLong, order.leverage);
+            IPikaPerp(pikaPerp).openPosition(_address, order.productId, order.margin, order.isLong, order.leverage, currentPrice);
         }
 
         // pay executor
@@ -569,7 +569,7 @@ contract OrderBook is Governable, ReentrancyGuard {
         );
 
         delete closeOrders[_address][_orderIndex];
-        IPikaPerp(pikaPerp).closePosition(_address, order.productId, order.size * BASE / leverage , order.isLong);
+        IPikaPerp(pikaPerp).closePosition(_address, order.productId, order.size * BASE / leverage , order.isLong, currentPrice);
 
         // pay executor
         _feeReceiver.sendValue(order.executionFee * 1e18 / BASE);

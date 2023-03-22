@@ -307,7 +307,8 @@ contract PikaPerpV3 is ReentrancyGuard {
         uint256 productId,
         uint256 margin,
         bool isLong,
-        uint256 leverage
+        uint256 leverage,
+        uint256 oraclePrice
     ) public payable nonReentrant {
         require(_validateManager(user) || (!isManagerOnlyForOpen && user == msg.sender), "!allow");
         require(isTradeEnabled, "!enabled");
@@ -326,9 +327,9 @@ contract PikaPerpV3 is ReentrancyGuard {
 
         _updatePendingRewards(tradeFee);
 
-        uint256 price = _calculatePrice(product.productToken, isLong, product.openInterestLong,
-            product.openInterestShort, uint256(vault.balance) * uint256(product.weight) * exposureMultiplier / uint256(totalWeight) / (10**4),
-            uint256(product.reserve), margin * leverage / BASE);
+        uint256 price = _calculatePrice(isLong, product.openInterestLong, product.openInterestShort,
+            uint256(vault.balance) * uint256(product.weight) * exposureMultiplier / uint256(totalWeight) / (10**4),
+            uint256(product.reserve), margin * leverage / BASE, oraclePrice);
 
         _updateFundingAndOpenInterest(productId, margin * leverage / BASE, isLong, true);
         int256 funding = IFundingManager(fundingManager).getFunding(productId);
@@ -349,7 +350,7 @@ contract PikaPerpV3 is ReentrancyGuard {
         margin: uint128(margin),
         leverage: uint64(leverage),
         price: uint64(price),
-        oraclePrice: uint64(IOracle(oracle).getPrice(product.productToken)),
+        oraclePrice: uint64(oraclePrice),
         timestamp: uint80(block.timestamp),
         isLong: isLong,
         // if no existing position, isNextPrice depends on if sender is a nextPriceManager,
@@ -410,15 +411,17 @@ contract PikaPerpV3 is ReentrancyGuard {
         address user,
         uint256 productId,
         uint256 margin,
-        bool isLong
+        bool isLong,
+        uint256 oraclePrice
     ) external {
-        return closePositionWithId(getPositionId(user, productId, isLong), margin);
+        return closePositionWithId(getPositionId(user, productId, isLong), margin, oraclePrice);
     }
 
     // Closes position from Position with id = positionId
     function closePositionWithId(
         uint256 positionId,
-        uint256 margin
+        uint256 margin,
+        uint256 oraclePrice
     ) public nonReentrant {
         // Check position
         Position storage position = positions[positionId];
@@ -433,8 +436,8 @@ contract PikaPerpV3 is ReentrancyGuard {
             isFullClose = true;
         }
 
-        uint256 price = _calculatePrice(product.productToken, !position.isLong, product.openInterestLong, product.openInterestShort,
-            getMaxExposure(uint256(product.weight)), uint256(product.reserve), margin * position.leverage / BASE);
+        uint256 price = _calculatePrice(!position.isLong, product.openInterestLong, product.openInterestShort,
+            getMaxExposure(uint256(product.weight)), uint256(product.reserve), margin * position.leverage / BASE, oraclePrice);
 
         _updateFundingAndOpenInterest(uint256(position.productId), margin * uint256(position.leverage) / BASE, position.isLong, false);
         int256 fundingPayment = PerpLib._getFundingPayment(fundingManager, position.isLong, position.productId, position.leverage, margin, position.funding);
@@ -743,15 +746,14 @@ contract PikaPerpV3 is ReentrancyGuard {
     // Private methods
 
     function _calculatePrice(
-        address productToken,
         bool isLong,
         uint256 openInterestLong,
         uint256 openInterestShort,
         uint256 maxExposure,
         uint256 reserve,
-        uint256 amount
+        uint256 amount,
+        uint256 oraclePrice
     ) private view returns(uint256) {
-        uint256 oraclePrice = isLong ? IOracle(oracle).getPrice(productToken, true) : IOracle(oracle).getPrice(productToken, false);
         int256 shift = (int256(openInterestLong) - int256(openInterestShort)) * int256(maxShift) / int256(maxExposure);
         if (isLong) {
             uint256 slippage = (reserve * reserve / (reserve - amount) - reserve) * BASE / amount;
