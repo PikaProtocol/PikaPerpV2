@@ -74,14 +74,14 @@ contract PositionManager is Governable, ReentrancyGuard {
     uint256 public constant BASE = 1e8;
     uint256 public constant FEE_BASE = 1e4;
 
-    mapping (address => bool) public isPositionKeeper;
-    mapping (address => bool) public isPriceKeeper;
-
     mapping (address => uint256) public openPositionsIndex;
     mapping (bytes32 => OpenPositionRequest) public openPositionRequests;
 
     mapping (address => uint256) public closePositionsIndex;
     mapping (bytes32 => ClosePositionRequest) public closePositionRequests;
+
+    mapping (address => bool) public managers;
+    mapping (address => mapping (address => bool)) public approvedManagers;
 
     event CreateOpenPosition(
         address indexed account,
@@ -163,8 +163,6 @@ contract PositionManager is Governable, ReentrancyGuard {
     );
     event ExecuteOpenPositionError(address indexed account, uint256 index, string executionError);
     event ExecuteClosePositionError(address indexed account, uint256 index, string executionError);
-    event SetPositionKeeper(address indexed account, bool isActive);
-    event SetPriceKeeper(address indexed account, bool isActive);
     event SetMinExecutionFee(uint256 minExecutionFee);
     event SetIsUserExecuteEnabled(bool isUserExecuteEnabled);
     event SetIsUserCancelEnabled(bool isUserCancelEnabled);
@@ -173,17 +171,9 @@ contract PositionManager is Governable, ReentrancyGuard {
     event SetRequestKeysStartValues(uint256 increasePositionRequestKeysStart, uint256 decreasePositionRequestKeysStart);
     event SetAllowPublicKeeper(bool allowPublicKeeper);
     event SetAllowUserCloseOnly(bool allowUserCloseOnly);
+    event SetManager(address manager, bool isActive);
+    event SetAccountManager(address account, address manager, bool isActive);
     event SetAdmin(address admin);
-
-    modifier onlyPositionKeeper() {
-        require(isPositionKeeper[msg.sender], "PositionManager: !positionKeeper");
-        _;
-    }
-
-    modifier onlyPriceKeeper() {
-        require(isPriceKeeper[msg.sender], "PositionManager: !priceKeeper");
-        _;
-    }
 
     modifier onlyAdmin() {
         require(msg.sender == admin, "PositionManager: !admin");
@@ -213,16 +203,6 @@ contract PositionManager is Governable, ReentrancyGuard {
 
     function setOracle(address _oracle) external onlyAdmin {
         oracle = _oracle;
-    }
-
-    function setPositionKeeper(address _account, bool _isActive) external onlyAdmin {
-        isPositionKeeper[_account] = _isActive;
-        emit SetPositionKeeper(_account, _isActive);
-    }
-
-    function setPriceKeeper(address _account, bool _isActive) external onlyAdmin {
-        isPriceKeeper[_account] = _isActive;
-        emit SetPriceKeeper(_account, _isActive);
     }
 
     function setMinExecutionFee(uint256 _minExecutionFee) external onlyAdmin {
@@ -272,44 +252,52 @@ contract PositionManager is Governable, ReentrancyGuard {
         emit SetAllowUserCloseOnly(_allowUserCloseOnly);
     }
 
+    function setManager(address _manager, bool _isActive) external onlyAdmin {
+        managers[_manager] = _isActive;
+        emit SetManager(_manager, _isActive);
+    }
+
+    function setAccountManager(address _manager, bool _isActive) external {
+        approvedManagers[msg.sender][_manager] = _isActive;
+        emit SetAccountManager(msg.sender, _manager, _isActive);
+    }
+
     function setAdmin(address _admin) external onlyGov {
         admin = _admin;
         emit SetAdmin(_admin);
     }
 
     function executeNPositionsWithPrices(
-        address[] memory tokens,
-        uint256[] memory prices,
+        bytes[] calldata _priceUpdateData,
         uint256 n,
         address payable _executionFeeReceiver
     ) external {
-        executePositionsWithPrices(tokens, prices, openPositionRequestKeysStart + n, closePositionRequestKeysStart + n, _executionFeeReceiver);
+        executePositionsWithPrices(_priceUpdateData, openPositionRequestKeysStart + n, closePositionRequestKeysStart + n, _executionFeeReceiver);
     }
 
     function executePositionsWithPrices(
-        address[] memory tokens,
-        uint256[] memory prices,
+        bytes[] calldata _priceUpdateData,
         uint256 _openEndIndex,
         uint256 _closeEndIndex,
         address payable _executionFeeReceiver
-    ) public onlyPriceKeeper {
+    ) public {
         isPriceKeeperCall = true;
-        IOracle(oracle).setPrices(tokens, prices);
-        executePositions(_openEndIndex, _closeEndIndex, _executionFeeReceiver);
+        IOracle(oracle).setPrices(_priceUpdateData);
+        _executePositions(_openEndIndex, _closeEndIndex, _executionFeeReceiver);
         isPriceKeeperCall = false;
     }
 
-    function executeNPositions(uint256 n, address payable _executionFeeReceiver) external {
+    function _executeNPositions(uint256 n, address payable _executionFeeReceiver) private {
         require(canPositionKeeperExecute(), "PositionManager: cannot execute");
-        executePositions(openPositionRequestKeysStart + n, closePositionRequestKeysStart + n, _executionFeeReceiver);
+        _executePositions(openPositionRequestKeysStart + n, closePositionRequestKeysStart + n, _executionFeeReceiver);
     }
 
-    function executePositions(uint256 _openEndIndex, uint256 _closeEndIndex, address payable _executionFeeReceiver) public {
-        executeOpenPositions(_openEndIndex, _executionFeeReceiver);
-        executeClosePositions(_closeEndIndex, _executionFeeReceiver);
+    function _executePositions(uint256 _openEndIndex, uint256 _closeEndIndex, address payable _executionFeeReceiver) private {
+        _executeOpenPositions(_openEndIndex, _executionFeeReceiver);
+        _executeClosePositions(_closeEndIndex, _executionFeeReceiver);
     }
 
-    function executeOpenPositions(uint256 _endIndex, address payable _executionFeeReceiver) public onlyPositionKeeper {
+    function _executeOpenPositions(uint256 _endIndex, address payable _executionFeeReceiver) private {
         uint256 index = openPositionRequestKeysStart;
         uint256 length = openPositionRequestKeys.length;
 
@@ -350,7 +338,7 @@ contract PositionManager is Governable, ReentrancyGuard {
         openPositionRequestKeysStart = index;
     }
 
-    function executeClosePositions(uint256 _endIndex, address payable _executionFeeReceiver) public onlyPositionKeeper {
+    function _executeClosePositions(uint256 _endIndex, address payable _executionFeeReceiver) private {
         uint256 index = closePositionRequestKeysStart;
         uint256 length = closePositionRequestKeys.length;
 
@@ -391,6 +379,7 @@ contract PositionManager is Governable, ReentrancyGuard {
     }
 
     function createOpenPosition(
+        address _account,
         uint256 _productId,
         uint256 _margin,
         uint256 _leverage,
@@ -399,8 +388,8 @@ contract PositionManager is Governable, ReentrancyGuard {
         uint256 _executionFee
     ) external payable nonReentrant {
         require(_executionFee >= minExecutionFee, "PositionManager: invalid executionFee");
-
-        uint256 tradeFee = getTradeFeeRate(_productId, msg.sender) * _margin * _leverage / (FEE_BASE * BASE);
+        require(msg.sender == _account || _validateManager(_account), "PositionManager: no permission for account");
+        uint256 tradeFee = _getTradeFeeRate(_productId, _account) * _margin * _leverage / (FEE_BASE * BASE);
         if (IERC20(collateralToken).isETH()) {
             IERC20(collateralToken).uniTransferFromSenderToThis((_executionFee + _margin + tradeFee) * tokenBase / BASE);
         } else {
@@ -409,7 +398,7 @@ contract PositionManager is Governable, ReentrancyGuard {
         }
 
         _createOpenPosition(
-            msg.sender,
+            _account,
             _productId,
             _margin,
             tradeFee,
@@ -421,6 +410,7 @@ contract PositionManager is Governable, ReentrancyGuard {
     }
 
     function createClosePosition(
+        address _account,
         uint256 _productId,
         uint256 _margin,
         bool _isLong,
@@ -429,9 +419,9 @@ contract PositionManager is Governable, ReentrancyGuard {
     ) external payable nonReentrant {
         require(_executionFee >= minExecutionFee, "PositionManager: invalid executionFee");
         require(msg.value == _executionFee * 1e18 / BASE, "PositionManager: invalid msg.value");
-
+        require(msg.sender == _account || _validateManager(_account), "PositionManager: no permission for account");
         _createClosePosition(
-            msg.sender,
+            _account,
             _productId,
             _margin,
             _isLong,
@@ -618,7 +608,7 @@ contract PositionManager is Governable, ReentrancyGuard {
             revert("PositionManager: request has expired");
         }
 
-        bool isKeeperCall = msg.sender == address(this) || isPositionKeeper[msg.sender];
+        bool isKeeperCall = msg.sender == address(this);
 
         if (!isUserExecuteEnabled && !isKeeperCall) {
             revert("PositionManager: forbidden");
@@ -636,7 +626,7 @@ contract PositionManager is Governable, ReentrancyGuard {
                 _positionBlockNumber.add(minBlockDelayPositionKeeper) <= block.number;
         }
 
-        require((!_isOpen || !allowUserCloseOnly) && (msg.sender == _account || allowPublicKeeper), "PositionManager: forbidden");
+        require((!_isOpen || !allowUserCloseOnly) && msg.sender == _account, "PositionManager: forbidden");
 
         require(_positionBlockTime.add(minTimeExecuteDelayPublic) <= block.timestamp, "PositionManager: min delay not yet passed for execution");
 
@@ -644,7 +634,7 @@ contract PositionManager is Governable, ReentrancyGuard {
     }
 
     function _validateCancellation(uint256 _positionBlockNumber, uint256 _positionBlockTime, address _account) internal view returns (bool) {
-        bool isKeeperCall = msg.sender == address(this) || isPositionKeeper[msg.sender];
+        bool isKeeperCall = msg.sender == address(this);
 
         if (!isUserCancelEnabled && !isKeeperCall) {
             revert("PositionManager: forbidden");
@@ -751,7 +741,11 @@ contract PositionManager is Governable, ReentrancyGuard {
         );
     }
 
-    function getTradeFeeRate(uint256 _productId, address _account) private returns(uint256) {
+    function _validateManager(address account) private view returns(bool) {
+        return managers[msg.sender] && approvedManagers[account][msg.sender];
+    }
+
+    function _getTradeFeeRate(uint256 _productId, address _account) private returns(uint256) {
         (address productToken,,uint256 fee,,,,,,) = IPikaPerp(pikaPerp).getProduct(_productId);
         return IFeeCalculator(feeCalculator).getFee(productToken, fee, _account, msg.sender);
     }

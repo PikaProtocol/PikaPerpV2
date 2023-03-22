@@ -141,13 +141,14 @@ contract PikaPerpV3 is ReentrancyGuard {
         int256 funding
     );
 
-    event AddMargin(
+    event ModifyMargin(
         uint256 indexed positionId,
         address indexed sender,
         address indexed user,
         uint256 margin,
         uint256 newMargin,
-        uint256 newLeverage
+        uint256 newLeverage,
+        bool shouldIncrease
     );
     event ClosePosition(
         uint256 indexed positionId,
@@ -308,11 +309,11 @@ contract PikaPerpV3 is ReentrancyGuard {
         bool isLong,
         uint256 leverage
     ) public payable nonReentrant {
-        require(_validateManager(user) || (!isManagerOnlyForOpen && user == msg.sender), "!allowed");
+        require(_validateManager(user) || (!isManagerOnlyForOpen && user == msg.sender), "!allow");
         require(isTradeEnabled, "!enabled");
         // Check params
         require(margin >= minMargin && margin < type(uint64).max, "!margin");
-        require(leverage >= 1 * BASE, "!lev");
+        require(leverage >=  BASE / 2, "!lev");
 
         // Check product
         Product storage product = products[productId];
@@ -372,32 +373,35 @@ contract PikaPerpV3 is ReentrancyGuard {
     }
 
     // Add margin to Position with positionId
-    function addMargin(uint256 positionId, uint256 margin) external payable nonReentrant {
-
-        IERC20(token).uniTransferFromSenderToThis(margin * tokenBase / BASE);
-
-        // Check params
-        require(margin >= minMargin, "!margin");
+    function modifyMargin(uint256 positionId, uint256 margin, bool shouldIncrease) external payable nonReentrant {
 
         // Check position
         Position storage position = positions[positionId];
-        require(msg.sender == position.owner || _validateManager(position.owner), "!allowed");
+        require(msg.sender == position.owner || _validateManager(position.owner), "!allow");
+        uint256 newMargin;
+        if (shouldIncrease) {
+            IERC20(token).uniTransferFromSenderToThis(margin * tokenBase / BASE);
+            newMargin = uint256(position.margin) + margin;
+        } else {
+            newMargin = uint256(position.margin) - margin;
+            IERC20(token).uniTransfer(msg.sender, margin * tokenBase / BASE);
+        }
 
         // New position params
-        uint256 newMargin = uint256(position.margin) + margin;
         uint256 newLeverage = uint256(position.leverage) * uint256(position.margin) / newMargin;
         require(newLeverage >= 1 * BASE, "!low-lev");
 
         position.margin = uint128(newMargin);
         position.leverage = uint64(newLeverage);
 
-        emit AddMargin(
+        emit ModifyMargin(
             positionId,
             msg.sender,
             position.owner,
             margin,
             newMargin,
-            newLeverage
+            newLeverage,
+            shouldIncrease
         );
 
     }
@@ -509,7 +513,7 @@ contract PikaPerpV3 is ReentrancyGuard {
 
     // Liquidate positionIds
     function liquidatePositions(uint256[] calldata positionIds) external {
-        require(liquidators[msg.sender] || allowPublicLiquidator, "!liquidator");
+        require(liquidators[msg.sender] || allowPublicLiquidator, "!liquid");
 
         uint256 totalLiquidatorReward;
         for (uint256 i = 0; i < positionIds.length; i++) {
@@ -590,10 +594,10 @@ contract PikaPerpV3 is ReentrancyGuard {
                 uint256(product.openInterestLong) + uint256(product.openInterestShort) + amount < maxExposureMultiplier * maxExposure, "!maxOI");
             if (isLong) {
                 product.openInterestLong = product.openInterestLong + uint64(amount);
-                require(uint256(product.openInterestLong) <= uint256(maxExposure) + uint256(product.openInterestShort), "!exposure-long");
+                require(uint256(product.openInterestLong) <= uint256(maxExposure) + uint256(product.openInterestShort), "!expo-long");
             } else {
                 product.openInterestShort = product.openInterestShort + uint64(amount);
-                require(uint256(product.openInterestShort) <= uint256(maxExposure) + uint256(product.openInterestLong), "!exposure-short");
+                require(uint256(product.openInterestShort) <= uint256(maxExposure) + uint256(product.openInterestLong), "!expo-short");
             }
         } else {
             totalOpenInterest = totalOpenInterest - amount;
@@ -764,7 +768,7 @@ contract PikaPerpV3 is ReentrancyGuard {
 
     function updateVault(Vault memory _vault) external {
         onlyOwner();
-        require(_vault.cap > 0 && _vault.stakingPeriod > 0 && _vault.stakingPeriod < 30 days, "!allowed");
+        require(_vault.cap > 0 && _vault.stakingPeriod > 0 && _vault.stakingPeriod < 30 days);
 
         vault.cap = _vault.cap;
         vault.stakingPeriod = _vault.stakingPeriod;
