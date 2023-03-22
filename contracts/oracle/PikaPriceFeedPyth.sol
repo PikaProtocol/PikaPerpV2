@@ -30,6 +30,7 @@ contract PikaPriceFeedPyth is Governable {
     event IsSpreadEnabledSet(bool isSpreadEnabled);
     event DefaultSpreadSet(uint256 defaultSpread);
     event SpreadSet(address token, uint256 spread);
+    event IsChainlinkAvailableSet(address productToken, bool isChainlinkAvailable);
     event SetOwner(address owner);
 
     uint256 public constant MAX_PRICE_DURATION = 30 minutes;
@@ -175,6 +176,14 @@ contract PikaPriceFeedPyth is Governable {
     function setSpread(address _token, uint256 _spread) external onlyOwner {
         spreads[_token] = _spread;
         emit SpreadSet(_token, _spread);
+    }
+
+    function setIsChainlinkAvailable(address[] calldata _productTokens, bool[] calldata _isAvailables) external onlyOwner {
+        require(_productTokens.length == _isAvailables.length, "not same length");
+        for (uint256 i = 0; i < _productTokens.length; i++) {
+            isChainlinkAvailable[_productTokens[i]] = _isAvailables[i];
+            emit IsChainlinkAvailableSet(_productTokens[i], _isAvailables[i]);
+        }
     }
 
     function setOwner(address _owner) external onlyGov {
