@@ -13,7 +13,7 @@ import "../access/Governable.sol";
 /** @title PikaFeeReward
     @notice Contract to distribute trading fee reward to PIKA holders.
  */
-contract VePikaFeeReward is Governable, ReentrancyGuard, Pausable {
+contract PikaFeeReward is Governable, ReentrancyGuard, Pausable {
 
     using SafeERC20 for IERC20;
     using Address for address payable;

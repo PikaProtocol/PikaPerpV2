@@ -7,7 +7,7 @@ import "@openzeppelin/contracts/access/AccessControl.sol";
 /** @title EsPika
     @notice Escrowed Pika is a non-transferable token which can be linearly vested to PIKA token via vesting contract.
  */
-contract Pika is AccessControl, ERC20 {
+contract EsPika is AccessControl, ERC20 {
     /// @dev The identifier of the role which maintains other roles.
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN");
     /// @dev The identifier of the role which allows accounts to mint tokens.
