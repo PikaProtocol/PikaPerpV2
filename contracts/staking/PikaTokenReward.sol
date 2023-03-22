@@ -9,7 +9,7 @@ import "../access/Governable.sol";
 import "./IPikaStaking.sol";
 
 /** @title PikaTokenReward
-    @notice Contract to distribute token rewards for PIKA holders. Adapted from: https://github.com/ribbon-finance/governance/blob/main/contracts/rbn-staking/VeRBNRewards.sol
+    @notice Contract to distribute token rewards for PIKA holders.
  */
 
 contract PikaTokenReward is Governable, ReentrancyGuard {
