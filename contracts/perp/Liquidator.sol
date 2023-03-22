@@ -50,13 +50,12 @@ contract Liquidator is Governable {
     }
 
     function liquidateWithPrices(
-        address[] memory tokens,
-        uint256[] memory prices,
+        bytes[] calldata _priceUpdateData,
         address[] calldata accounts,
         uint256[] calldata productIds,
         bool[] calldata isLongs)
     external onlyKeeper {
-        IOracle(priceFeed).setPrices(tokens, prices);
+        IOracle(priceFeed).setPrices(_priceUpdateData);
         liquidatePositions(accounts, productIds, isLongs);
     }
 
