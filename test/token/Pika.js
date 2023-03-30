@@ -45,29 +45,4 @@ describe("Pika", function () {
       expect(await this.pika.balanceOf(this.bob.address)).to.be.equal("10000000000000000000000")
     })
   })
-
-  describe("test transfer", async function(){
-    it("transfer", async function () {
-      await this.pika.connect(this.owner).mint(this.alice.address, "10000000000000000000000")
-      await expect(
-          this.pika.connect(this.alice).transfer(this.bob.address, "10000000000000000000000")
-      ).to.be.revertedWith("PIKA: no transfer privileges");
-      await this.pika.setTransfersAllowed(true);
-      await this.pika.connect(this.alice).transfer(this.bob.address, "10000000000000000000000")
-      expect(await this.pika.balanceOf(this.alice.address)).to.be.equal("0")
-      expect(await this.pika.balanceOf(this.bob.address)).to.be.equal("10000000000000000000000")
-    })
-
-    it("transferFrom", async function () {
-      await this.pika.connect(this.owner).mint(this.alice.address, "10000000000000000000000")
-      await this.pika.connect(this.alice).approve(this.bob.address, "10000000000000000000000")
-      await expect(
-        this.pika.connect(this.bob).transferFrom(this.alice.address, this.bob.address, "10000000000000000000000")
-      ).to.be.revertedWith("PIKA: no transfer privileges")
-      await this.pika.setTransfersAllowed(true);
-      await this.pika.connect(this.bob).transferFrom(this.alice.address, this.bob.address, "10000000000000000000000")
-      expect(await this.pika.balanceOf(this.alice.address)).to.be.equal("0")
-      expect(await this.pika.balanceOf(this.bob.address)).to.be.equal("10000000000000000000000")
-    })
-  })
 })

@@ -141,14 +141,13 @@ contract PikaPerpV3 is ReentrancyGuard {
         int256 funding
     );
 
-    event ModifyMargin(
+    event AddMargin(
         uint256 indexed positionId,
         address indexed sender,
         address indexed user,
         uint256 margin,
         uint256 newMargin,
-        uint256 newLeverage,
-        bool shouldIncrease
+        uint256 newLeverage
     );
     event ClosePosition(
         uint256 indexed positionId,
@@ -309,11 +308,11 @@ contract PikaPerpV3 is ReentrancyGuard {
         bool isLong,
         uint256 leverage
     ) public payable nonReentrant {
-        require(_validateManager(user) || (!isManagerOnlyForOpen && user == msg.sender), "!allow");
+        require(_validateManager(user) || (!isManagerOnlyForOpen && user == msg.sender), "!allowed");
         require(isTradeEnabled, "!enabled");
         // Check params
         require(margin >= minMargin && margin < type(uint64).max, "!margin");
-        require(leverage >=  BASE / 2, "!lev");
+        require(leverage >= 1 * BASE, "!lev");
 
         // Check product
         Product storage product = products[productId];
@@ -357,51 +356,48 @@ contract PikaPerpV3 is ReentrancyGuard {
         isNextPrice: position.margin == 0 ? nextPriceManagers[msg.sender] : (!position.isNextPrice ? false : nextPriceManagers[msg.sender]),
         funding: int128(funding)
         });
-        emit NewPosition(
-            getPositionId(user, productId, isLong),
-            user,
-            productId,
-            isLong,
-            price,
-            IOracle(oracle).getPrice(product.productToken),
-            margin,
-            leverage,
-            tradeFee,
-            position.margin == 0 ? nextPriceManagers[msg.sender] : (!position.isNextPrice ? false : nextPriceManagers[msg.sender]),
-            funding
-        );
+//        emit NewPosition(
+//            getPositionId(user, productId, isLong),
+//            user,
+//            productId,
+//            isLong,
+//            price,
+//            IOracle(oracle).getPrice(product.productToken),
+//            margin,
+//            leverage,
+//            tradeFee,
+//            position.margin == 0 ? nextPriceManagers[msg.sender] : (!position.isNextPrice ? false : nextPriceManagers[msg.sender]),
+//            funding
+//        );
     }
 
     // Add margin to Position with positionId
-    function modifyMargin(uint256 positionId, uint256 margin, bool shouldIncrease) external payable nonReentrant {
+    function addMargin(uint256 positionId, uint256 margin) external payable nonReentrant {
+
+        IERC20(token).uniTransferFromSenderToThis(margin * tokenBase / BASE);
+
+        // Check params
+        require(margin >= minMargin, "!margin");
 
         // Check position
         Position storage position = positions[positionId];
-        require(msg.sender == position.owner || _validateManager(position.owner), "!allow");
-        uint256 newMargin;
-        if (shouldIncrease) {
-            IERC20(token).uniTransferFromSenderToThis(margin * tokenBase / BASE);
-            newMargin = uint256(position.margin) + margin;
-        } else {
-            newMargin = uint256(position.margin) - margin;
-            IERC20(token).uniTransfer(msg.sender, margin * tokenBase / BASE);
-        }
+        require(msg.sender == position.owner || _validateManager(position.owner), "!allowed");
 
         // New position params
+        uint256 newMargin = uint256(position.margin) + margin;
         uint256 newLeverage = uint256(position.leverage) * uint256(position.margin) / newMargin;
         require(newLeverage >= 1 * BASE, "!low-lev");
 
         position.margin = uint128(newMargin);
         position.leverage = uint64(newLeverage);
 
-        emit ModifyMargin(
+        emit AddMargin(
             positionId,
             msg.sender,
             position.owner,
             margin,
             newMargin,
-            newLeverage,
-            shouldIncrease
+            newLeverage
         );
 
     }
@@ -513,7 +509,7 @@ contract PikaPerpV3 is ReentrancyGuard {
 
     // Liquidate positionIds
     function liquidatePositions(uint256[] calldata positionIds) external {
-        require(liquidators[msg.sender] || allowPublicLiquidator, "!liquid");
+        require(liquidators[msg.sender] || allowPublicLiquidator, "!liquidator");
 
         uint256 totalLiquidatorReward;
         for (uint256 i = 0; i < positionIds.length; i++) {
@@ -594,7 +590,7 @@ contract PikaPerpV3 is ReentrancyGuard {
                 uint256(product.openInterestLong) + uint256(product.openInterestShort) + amount < maxExposureMultiplier * maxExposure, "!maxOI");
             if (isLong) {
                 product.openInterestLong = product.openInterestLong + uint64(amount);
-                require(uint256(product.openInterestLong) <= uint256(maxExposure) + uint256(product.openInterestShort), "!expo-long");
+                require(uint256(product.openInterestLong) <= uint256(maxExposure) + uint256(product.openInterestShort), "!exposure-long");
             } else {
                 product.openInterestShort = product.openInterestShort + uint64(amount);
                 require(uint256(product.openInterestShort) <= uint256(maxExposure) + uint256(product.openInterestLong), "!expo-short");

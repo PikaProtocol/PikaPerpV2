@@ -95,8 +95,7 @@ describe("Trading ETH", () => {
 
 		const pikaContract = await ethers.getContractFactory("Pika");
 		pika = await pikaContract.deploy("Pika", "PIKA", "1000000000000000000000000000", owner.address, owner.address)
-		await pika.setTransfersAllowed(true);
-		const vePikaFeeRewardContract = await ethers.getContractFactory("VePikaFeeReward");
+		const vePikaFeeRewardContract = await ethers.getContractFactory("PikaFeeReward");
 		vePikaFeeReward = await vePikaFeeRewardContract.deploy(pika.address, "0x0000000000000000000000000000000000000000");
 		const vaultFeeRewardContract = await ethers.getContractFactory("VaultFeeReward");
 		vaultFeeReward = await vaultFeeRewardContract.deploy(trading.address,"0x0000000000000000000000000000000000000000", "1000000000000000000");
@@ -499,10 +498,9 @@ describe("Trading ETH", () => {
 			await oracle.setPrice(3001e8);
 			await trading.connect(owner).setManager(orderbook.address, true);
 			await trading.connect(account1).setAccountManager(orderbook.address, true);
-			await orderbook.connect(owner).setAllowPublicKeeper(true);
 			let ethAmount = ((BigNumber.from(amount).add(BigNumber.from("100000"))).mul(BigNumber.from("10010000000"))).add(BigNumber.from("1000000000000000"));
 			// create open order
-			await orderbook.connect(account1).createOpenOrder(1, amount, leverage,  true, "300000000000", false, "100000", {from: account1.address, value:
+			await orderbook.connect(account1).createOpenOrder(account1.address, 1, amount, leverage,  true, "300000000000", false, "100000", {from: account1.address, value:
 				ethAmount, gasPrice: gasPrice})
 
 			const openOrder1 = (await orderbook.getOpenOrder(account1.address, 0));
@@ -512,15 +510,18 @@ describe("Trading ETH", () => {
 			const openOrder2 = (await orderbook.getOpenOrder(account1.address, 0));
 			expect(openOrder2.margin.toString()).to.be.equal("0");
 			// create open order again
-			await orderbook.connect(account1).createOpenOrder(1, amount, leverage, true, "300000000000", false, "100000", {from: account1.address, value:
+			await orderbook.connect(account1).createOpenOrder(account1.address, 1, amount, leverage, true, "300000000000", false, "100000", {from: account1.address, value:
 				ethAmount, gasPrice: gasPrice})
 
-			await expect(orderbook.connect(account2).executeOpenOrder(account1.address, 1, account2.address)).to.be.revertedWith('OrderBook: invalid price for execution');
+			// execute order but price does not match
+			await orderbook.connect(account2).executeOrdersWithPrices([], [account1.address], [1], [], [], account2.address);
+			const position0 = await trading.getPosition(account1.address, 1, true);
+			expect(position0[0]).to.equal(0); // no active position because execution reverted
 			// update open order
 			await orderbook.connect(account1).updateOpenOrder(1, "200000000", "300100000000", false);
 			const openOrder3 = (await orderbook.getOpenOrder(account1.address, 1));
 			// execute open order
-			await orderbook.connect(account2).executeOpenOrder(account1.address, 1, account2.address);
+			await orderbook.connect(account2).executeOrdersWithPrices([], [account1.address], [1], [], [], account2.address);
 
 			const position1 = await trading.getPosition(account1.address, 1, true);
 			expect(position1[0]).to.equal(productId);
@@ -529,7 +530,7 @@ describe("Trading ETH", () => {
 			expect(position1[1]).to.equal("200000000");
 
 			// create close order
-			await orderbook.connect(account1).createCloseOrder(1, size, true, "300000000000", false, {from: account1.address, value: "1000000000000000", gasPrice: gasPrice})
+			await orderbook.connect(account1).createCloseOrder(account1.address, 1, size, true, "300000000000", false, {from: account1.address, value: "1000000000000000", gasPrice: gasPrice})
 			const closeOrder1 = (await orderbook.getCloseOrder(account1.address, 0));
 			expect(closeOrder1.size.toString()).to.be.equal(size);
 			// cancel close order
@@ -537,14 +538,16 @@ describe("Trading ETH", () => {
 			const closeOrder2 = (await orderbook.getCloseOrder(account1.address, 0));
 			expect(closeOrder2.size.toString()).to.be.equal("0");
 			// create close order again
-			await orderbook.connect(account1).createCloseOrder(1, size, true, "300000000000", false, {from: account1.address, value: "1000000000000000", gasPrice: gasPrice})
-			await expect(orderbook.connect(account2).executeCloseOrder(account1.address, 1, account2.address)).to.be.revertedWith('OrderBook: invalid price for execution');
+			await orderbook.connect(account1).createCloseOrder(account1.address, 1, size, true, "300000000000", false, {from: account1.address, value: "1000000000000000", gasPrice: gasPrice})
+			await orderbook.connect(account2).executeOrdersWithPrices([], [], [], [account1.address], [1], account2.address);
+			const position2 = await trading.getPosition(account1.address, 1, true);
+			expect(position2[0]).to.equal(1); // no active position because execution reverted
 			// update close order
 			await orderbook.connect(account1).updateCloseOrder(1, "200000000", "300100000000", false);
 			// execute close order
-			await orderbook.connect(account2).executeCloseOrder(account1.address, 1, account2.address);
-			const position2 = await trading.getPosition(account1.address, 1, true);
-			expect(position2[4]).to.equal("0");
+			await orderbook.connect(account2).executeOrdersWithPrices([], [], [], [account1.address], [1], account2.address);
+			const position3 = await trading.getPosition(account1.address, 1, true);
+			expect(position3[4]).to.equal("0");
 		})
 	});
 });

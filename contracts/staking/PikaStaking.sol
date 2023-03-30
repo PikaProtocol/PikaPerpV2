@@ -24,8 +24,6 @@ contract PikaStaking is Governable, ReentrancyGuard, Pausable {
     address[] public rewardPools;
 
     mapping(address => uint256) private _balances;
-    mapping(address => uint256) private _claimableReward;
-    mapping(address => uint256) private _previousRewardPerToken;
     mapping(address => uint256) public stakeTimestamp;
 
     uint256 public constant PRECISION = 10**18;
@@ -88,6 +86,10 @@ contract PikaStaking is Governable, ReentrancyGuard, Pausable {
         _balances[msg.sender] -= amount;
         IERC20(stakingToken).safeTransfer(msg.sender, amount);
         emit Withdrawn(msg.sender, amount);
+    }
+
+    function withdrawAll() external {
+        withdraw(_balances[msg.sender]);
     }
 
     function updateReward(address account) public {
