@@ -356,19 +356,19 @@ contract PikaPerpV3 is ReentrancyGuard {
         isNextPrice: position.margin == 0 ? nextPriceManagers[msg.sender] : (!position.isNextPrice ? false : nextPriceManagers[msg.sender]),
         funding: int128(funding)
         });
-//        emit NewPosition(
-//            getPositionId(user, productId, isLong),
-//            user,
-//            productId,
-//            isLong,
-//            price,
-//            IOracle(oracle).getPrice(product.productToken),
-//            margin,
-//            leverage,
-//            tradeFee,
-//            position.margin == 0 ? nextPriceManagers[msg.sender] : (!position.isNextPrice ? false : nextPriceManagers[msg.sender]),
-//            funding
-//        );
+        emit NewPosition(
+            getPositionId(user, productId, isLong),
+            user,
+            productId,
+            isLong,
+            price,
+            IOracle(oracle).getPrice(product.productToken),
+            margin,
+            leverage,
+            tradeFee,
+            position.margin == 0 ? nextPriceManagers[msg.sender] : (!position.isNextPrice ? false : nextPriceManagers[msg.sender]),
+            funding
+        );
     }
 
     // Add margin to Position with positionId
@@ -593,7 +593,7 @@ contract PikaPerpV3 is ReentrancyGuard {
                 require(uint256(product.openInterestLong) <= uint256(maxExposure) + uint256(product.openInterestShort), "!exposure-long");
             } else {
                 product.openInterestShort = product.openInterestShort + uint64(amount);
-                require(uint256(product.openInterestShort) <= uint256(maxExposure) + uint256(product.openInterestLong), "!expo-short");
+                require(uint256(product.openInterestShort) <= uint256(maxExposure) + uint256(product.openInterestLong), "!exposure-short");
             }
         } else {
             totalOpenInterest = totalOpenInterest - amount;
@@ -764,7 +764,7 @@ contract PikaPerpV3 is ReentrancyGuard {
 
     function updateVault(Vault memory _vault) external {
         onlyOwner();
-        require(_vault.cap > 0 && _vault.stakingPeriod > 0 && _vault.stakingPeriod < 30 days);
+        require(_vault.cap > 0 && _vault.stakingPeriod > 0 && _vault.stakingPeriod < 30 days, "!allowed");
 
         vault.cap = _vault.cap;
         vault.stakingPeriod = _vault.stakingPeriod;
