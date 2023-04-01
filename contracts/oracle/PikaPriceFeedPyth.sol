@@ -125,10 +125,10 @@ contract PikaPriceFeedPyth is Governable {
     function _getPythPrice(bytes32 priceFeedId) private view returns (uint256, uint256) {
 
         PythStructs.Price memory retrievedPrice = IPyth(pyth).getPriceUnsafe(priceFeedId);
-        uint256 baseConversion = 10 ** uint256(int256(8) + retrievedPrice.expo);
+        uint256 baseConversion = 10 ** uint256(int256(18) + retrievedPrice.expo);
 
         // Convert price to 8 decimals
-        uint256 price = uint256(retrievedPrice.price * int256(baseConversion));
+        uint256 price = uint256(retrievedPrice.price * int256(baseConversion)) / (10 ** 10);
         uint256 publishTime = retrievedPrice.publishTime;
 
         return (price, publishTime);

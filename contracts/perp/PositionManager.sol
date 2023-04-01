@@ -52,8 +52,7 @@ contract PositionManager is Governable, ReentrancyGuard {
     address public immutable collateralToken;
     uint256 public minExecutionFee;
 
-    uint256 public minBlockDelayPositionKeeper;
-    uint256 public minBlockDelayPriceKeeper;
+    uint256 public minBlockDelayKeeper;
     uint256 public minTimeExecuteDelayPublic;
     uint256 public minTimeCancelDelayPublic;
     uint256 public maxTimeDelay;
@@ -62,7 +61,6 @@ contract PositionManager is Governable, ReentrancyGuard {
     bool public isUserCancelEnabled = true;
     bool public allowPublicKeeper = false;
     bool public allowUserCloseOnly = false;
-    bool public isPriceKeeperCall = false;
 
     bytes32[] public openPositionRequestKeys;
     bytes32[] public closePositionRequestKeys;
@@ -166,7 +164,7 @@ contract PositionManager is Governable, ReentrancyGuard {
     event SetMinExecutionFee(uint256 minExecutionFee);
     event SetIsUserExecuteEnabled(bool isUserExecuteEnabled);
     event SetIsUserCancelEnabled(bool isUserCancelEnabled);
-    event SetDelayValues(uint256 minBlockDelayPositionKeeper, uint256 minBlockDelayPriceKeeper, uint256 minTimeExecuteDelayPublic,
+    event SetDelayValues(uint256 minBlockDelayKeeper, uint256 minTimeExecuteDelayPublic,
         uint256 minTimeCancelDelayPublic, uint256 maxTimeDelay);
     event SetRequestKeysStartValues(uint256 increasePositionRequestKeysStart, uint256 decreasePositionRequestKeysStart);
     event SetAllowPublicKeeper(bool allowPublicKeeper);
@@ -221,18 +219,16 @@ contract PositionManager is Governable, ReentrancyGuard {
     }
 
     function setDelayValues(
-        uint256 _minBlockDelayPositionKeeper,
-        uint256 _minBlockDelayPriceKeeper,
+        uint256 _minBlockDelayKeeper,
         uint256 _minTimeExecuteDelayPublic,
         uint256 _minTimeCancelDelayPublic,
         uint256 _maxTimeDelay
     ) external onlyAdmin {
-        minBlockDelayPositionKeeper = _minBlockDelayPositionKeeper;
-        minBlockDelayPriceKeeper = _minBlockDelayPriceKeeper;
+        minBlockDelayKeeper = _minBlockDelayKeeper;
         minTimeExecuteDelayPublic = _minTimeExecuteDelayPublic;
         minTimeCancelDelayPublic = _minTimeCancelDelayPublic;
         maxTimeDelay = _maxTimeDelay;
-        emit SetDelayValues(_minBlockDelayPositionKeeper, _minBlockDelayPriceKeeper, _minTimeExecuteDelayPublic, _minTimeCancelDelayPublic, _maxTimeDelay);
+        emit SetDelayValues(_minBlockDelayKeeper, _minTimeExecuteDelayPublic, _minTimeCancelDelayPublic, _maxTimeDelay);
     }
 
     function setRequestKeysStartValues(uint256 _increasePositionRequestKeysStart, uint256 _decreasePositionRequestKeysStart) external onlyAdmin {
@@ -281,14 +277,12 @@ contract PositionManager is Governable, ReentrancyGuard {
         uint256 _closeEndIndex,
         address payable _executionFeeReceiver
     ) public {
-        isPriceKeeperCall = true;
         IOracle(oracle).setPrices(_priceUpdateData);
         _executePositions(_openEndIndex, _closeEndIndex, _executionFeeReceiver);
-        isPriceKeeperCall = false;
     }
 
     function _executeNPositions(uint256 n, address payable _executionFeeReceiver) private {
-        require(canPositionKeeperExecute(), "PositionManager: cannot execute");
+        require(canKeeperExecute(), "PositionManager: cannot execute");
         _executePositions(openPositionRequestKeysStart + n, closePositionRequestKeysStart + n, _executionFeeReceiver);
     }
 
@@ -443,9 +437,11 @@ contract PositionManager is Governable, ReentrancyGuard {
         OpenPositionRequest memory request = openPositionRequests[_key];
         // if the request was already executed or cancelled, return true so that the executeOpenPositions loop will continue executing the next request
         if (request.account == address(0)) { return true; }
+
         (address productToken,,,,,,,,) = IPikaPerp(pikaPerp).getProduct(request.productId);
         uint256 oraclePrice = request.isLong ? IOracle(oracle).getPrice(productToken, true) : IOracle(oracle).getPrice(productToken, false);
         bool shouldExecute = _validateExecution(request.blockNumber, request.blockTime, request.account, true, request.isLong, request.acceptablePrice, oraclePrice);
+
         if (!shouldExecute) { return false; }
 
         delete openPositionRequests[_key];
@@ -589,18 +585,11 @@ contract PositionManager is Governable, ReentrancyGuard {
         return closePositionRequests[_key];
     }
 
-    function canPriceKeeperExecute() public view returns(bool) {
+    function canKeeperExecute() public view returns(bool) {
         return (openPositionRequestKeysStart < openPositionRequestKeys.length &&
-        openPositionRequests[openPositionRequestKeys[openPositionRequestKeysStart]].blockNumber.add(minBlockDelayPriceKeeper) <= block.timestamp) ||
+        openPositionRequests[openPositionRequestKeys[openPositionRequestKeysStart]].blockNumber.add(minBlockDelayKeeper) <= block.timestamp) ||
         (closePositionRequestKeysStart < closePositionRequestKeys.length &&
-        closePositionRequests[closePositionRequestKeys[closePositionRequestKeysStart]].blockNumber.add(minBlockDelayPriceKeeper) <= block.timestamp);
-    }
-
-    function canPositionKeeperExecute() public view returns(bool) {
-        return (openPositionRequestKeysStart < openPositionRequestKeys.length &&
-            openPositionRequests[openPositionRequestKeys[openPositionRequestKeysStart]].blockNumber.add(minBlockDelayPositionKeeper) <= block.timestamp) ||
-            (closePositionRequestKeysStart < closePositionRequestKeys.length &&
-            closePositionRequests[closePositionRequestKeys[closePositionRequestKeysStart]].blockNumber.add(minBlockDelayPositionKeeper) <= block.timestamp);
+        closePositionRequests[closePositionRequestKeys[closePositionRequestKeysStart]].blockNumber.add(minBlockDelayKeeper) <= block.timestamp);
     }
 
     function _validateExecution(uint256 _positionBlockNumber, uint256 _positionBlockTime, address _account,
@@ -615,19 +604,15 @@ contract PositionManager is Governable, ReentrancyGuard {
         if (!isUserExecuteEnabled && !isKeeperCall) {
             revert("PositionManager: forbidden");
         }
-
         if (isKeeperCall) {
             if (_isLong) {
-                require(_oraclePrice <= _acceptablePrice, "PositionManager: current price too low");
+                require(_oraclePrice <= _acceptablePrice, "PositionManager: current price too high");
             } else {
-                require(_oraclePrice >= _acceptablePrice, "PositionManager: current price too high");
+                require(_oraclePrice >= _acceptablePrice, "PositionManager: current price too low");
             }
-            return isPriceKeeperCall ? _positionBlockNumber.add(minBlockDelayPriceKeeper) <= block.number :
-                _positionBlockNumber.add(minBlockDelayPositionKeeper) <= block.number;
+            return _positionBlockNumber.add(minBlockDelayKeeper) <= block.number;
         }
-
         require((!_isOpen || !allowUserCloseOnly) && msg.sender == _account, "PositionManager: forbidden");
-
         require(_positionBlockTime.add(minTimeExecuteDelayPublic) <= block.timestamp, "PositionManager: min delay not yet passed for execution");
 
         return true;
@@ -641,8 +626,7 @@ contract PositionManager is Governable, ReentrancyGuard {
         }
 
         if (isKeeperCall) {
-            return isPriceKeeperCall ? _positionBlockNumber.add(minBlockDelayPriceKeeper) <= block.number :
-            _positionBlockNumber.add(minBlockDelayPositionKeeper) <= block.number;
+            return _positionBlockNumber.add(minBlockDelayKeeper) <= block.number;
         }
 
         require(msg.sender == _account, "PositionManager: forbidden");

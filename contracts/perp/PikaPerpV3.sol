@@ -100,8 +100,6 @@ contract PikaPerpV3 is ReentrancyGuard {
     bool private canUserStake = true;
     bool private allowPublicLiquidator = false;
     bool private isTradeEnabled = true;
-    bool private isManagerOnlyForOpen = false;
-    bool private isManagerOnlyForClose = false;
     Vault private vault;
     uint256 private constant BASE = 10**8;
 
@@ -310,7 +308,7 @@ contract PikaPerpV3 is ReentrancyGuard {
         uint256 leverage,
         uint256 oraclePrice
     ) public payable nonReentrant {
-        require(_validateManager(user) || (!isManagerOnlyForOpen && user == msg.sender), "!allow");
+        require(_validateManager(user), "!allowed");
         require(isTradeEnabled, "!enabled");
         // Check params
         require(margin >= minMargin && margin < type(uint64).max, "!margin");
@@ -364,7 +362,7 @@ contract PikaPerpV3 is ReentrancyGuard {
             productId,
             isLong,
             price,
-            IOracle(oracle).getPrice(product.productToken),
+            oraclePrice,
             margin,
             leverage,
             tradeFee,
@@ -425,7 +423,7 @@ contract PikaPerpV3 is ReentrancyGuard {
     ) public nonReentrant {
         // Check position
         Position storage position = positions[positionId];
-        require(_validateManager(position.owner) || (!isManagerOnlyForClose && msg.sender == position.owner), "!close");
+        require(_validateManager(position.owner), "!close");
 
         // Check product
         Product storage product = products[uint256(position.productId)];
@@ -516,7 +514,7 @@ contract PikaPerpV3 is ReentrancyGuard {
 
     // Liquidate positionIds
     function liquidatePositions(uint256[] calldata positionIds) external {
-        require(liquidators[msg.sender] || allowPublicLiquidator, "!liquid");
+        require(liquidators[msg.sender] || allowPublicLiquidator, "!liquidator");
 
         uint256 totalLiquidatorReward;
         for (uint256 i = 0; i < positionIds.length; i++) {
@@ -597,10 +595,10 @@ contract PikaPerpV3 is ReentrancyGuard {
                 uint256(product.openInterestLong) + uint256(product.openInterestShort) + amount < maxExposureMultiplier * maxExposure, "!maxOI");
             if (isLong) {
                 product.openInterestLong = product.openInterestLong + uint64(amount);
-                require(uint256(product.openInterestLong) <= uint256(maxExposure) + uint256(product.openInterestShort), "!expo-long");
+                require(uint256(product.openInterestLong) <= uint256(maxExposure) + uint256(product.openInterestShort), "!exposure-long");
             } else {
                 product.openInterestShort = product.openInterestShort + uint64(amount);
-                require(uint256(product.openInterestShort) <= uint256(maxExposure) + uint256(product.openInterestLong), "!expo-short");
+                require(uint256(product.openInterestShort) <= uint256(maxExposure) + uint256(product.openInterestLong), "!exposure-short");
             }
         } else {
             totalOpenInterest = totalOpenInterest - amount;
@@ -770,7 +768,7 @@ contract PikaPerpV3 is ReentrancyGuard {
 
     function updateVault(Vault memory _vault) external {
         onlyOwner();
-        require(_vault.cap > 0 && _vault.stakingPeriod > 0 && _vault.stakingPeriod < 30 days);
+        require(_vault.cap > 0 && _vault.stakingPeriod > 0 && _vault.stakingPeriod < 30 days, "!allowed");
 
         vault.cap = _vault.cap;
         vault.stakingPeriod = _vault.stakingPeriod;
@@ -865,8 +863,6 @@ contract PikaPerpV3 is ReentrancyGuard {
         uint256 _minProfitTime,
         bool _canUserStake,
         bool _allowPublicLiquidator,
-        bool _isManagerOnlyForOpen,
-        bool _isManagerOnlyForClose,
         uint256 _exposureMultiplier,
         uint256 _utilizationMultiplier,
         uint256 _maxExposureMultiplier,
@@ -880,8 +876,6 @@ contract PikaPerpV3 is ReentrancyGuard {
         minProfitTime = _minProfitTime;
         canUserStake = _canUserStake;
         allowPublicLiquidator = _allowPublicLiquidator;
-        isManagerOnlyForOpen = _isManagerOnlyForOpen;
-        isManagerOnlyForClose = _isManagerOnlyForClose;
         exposureMultiplier = _exposureMultiplier;
         utilizationMultiplier = _utilizationMultiplier;
         maxExposureMultiplier = _maxExposureMultiplier;

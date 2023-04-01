@@ -38,7 +38,6 @@ describe("PikaTokenGeneration", function () {
         pikaContract = await hre.ethers.getContractFactory("Pika")
 
         pika = await pikaContract.deploy("Pika", "PIKA", "1000000000000000000000000000", owner.address, owner.address)
-        await pika.setTransfersAllowed(true);
 
         const users = [
             {address: tom.address, amount: "100000000000000000"},

@@ -16,7 +16,17 @@ contract Vester is Ownable {
     using EnumerableSet for EnumerableSet.UintSet;
 
     struct UserInfo {
+        uint256 initialDepositAmount;
         uint256 depositAmount;
+        uint256 vestedUntil;
+        uint256 vestingStartTime;
+    }
+
+    struct DepositVestingStatus {
+        uint256 depositId;
+        uint256 initialDepositAmount;
+        uint256 depositAmount;
+        uint256 claimableAmount;
         uint256 vestedUntil;
         uint256 vestingStartTime;
     }
@@ -43,6 +53,7 @@ contract Vester is Ownable {
     event Deposit(address indexed user, uint256 depositId, uint256 amount);
     event Withdraw(address indexed user, uint256 depositId, uint256 amount);
     event Claim(address indexed user, uint256 depositId, uint256 amountClaimed, uint256 claimFee);
+    event TreasurySet(address treasury);
 
     constructor(
         address _esPika,
@@ -68,6 +79,7 @@ contract Vester is Ownable {
         IERC20(esPika).safeTransferFrom(msg.sender, address(this), _amount);
         (UserInfo storage user, uint256 depositId) = _addDeposit(_to);
         totalEsPikaDeposit += _amount;
+        user.initialDepositAmount = _amount;
         user.depositAmount = _amount;
         user.vestedUntil = block.timestamp + vestingPeriod;
         user.vestingStartTime = block.timestamp;
@@ -84,6 +96,7 @@ contract Vester is Ownable {
             _amount = user.depositAmount;
         }
         totalEsPikaDeposit -= _amount;
+        user.initialDepositAmount -= _amount;
         user.depositAmount -= _amount;
         IERC20(esPika).safeTransfer(msg.sender, _amount);
         emit Withdraw(msg.sender, _depositId, _amount);
@@ -125,7 +138,7 @@ contract Vester is Ownable {
         }
         if (block.timestamp < user.vestedUntil) {
             return user.depositAmount * (FEE_BASE - initialClaimFee) / FEE_BASE +
-                user.depositAmount * initialClaimFee * (block.timestamp - user.vestingStartTime) / (FEE_BASE * vestingPeriod);
+            user.depositAmount * initialClaimFee * (block.timestamp - user.vestingStartTime) / (FEE_BASE * vestingPeriod);
         }
         return user.depositAmount;
     }
@@ -154,6 +167,19 @@ contract Vester is Ownable {
         return unvestedAllAmount;
     }
 
+    function initialDeposited(address _account, uint256 _depositId) public view returns(uint256) {
+        return userInfo[_account][_depositId].initialDepositAmount;
+    }
+
+    function initialDepositedAll(address _account) external view returns(uint256 initialDepositedAllAmount) {
+        initialDepositedAllAmount = 0;
+        uint256 len = allUserDepositIds[_account].length();
+        for (uint256 i = 0; i < len; i++) {
+            uint256 depositId = allUserDepositIds[_account].at(i);
+            initialDepositedAllAmount += initialDeposited(_account, depositId);
+        }
+    }
+
     function deposited(address _account, uint256 _depositId) public view returns(uint256) {
         return userInfo[_account][_depositId].depositAmount;
     }
@@ -167,8 +193,46 @@ contract Vester is Ownable {
         }
     }
 
+    function recoverToken(address _token, uint256 _amount) external onlyOwner {
+        require(_token != esPika, "must not be esPika token");
+        if (_token == pika) {
+            require(_amount <= IERC20(_token).balanceOf(address(this)) - IERC20(esPika).balanceOf(address(this)));
+            SafeERC20.safeTransfer(
+                IERC20(_token),
+                owner(),
+                IERC20(_token).balanceOf(address(this))
+            );
+        } else {
+            SafeERC20.safeTransfer(
+                IERC20(_token),
+                owner(),
+                _amount
+            );
+        }
+    }
+
     function getAllUserDepositIds(address _user) public view returns (uint256[] memory) {
         return allUserDepositIds[_user].values();
+    }
+
+    function getVestingStatus(address _user, uint256 _depositId) public view returns(DepositVestingStatus memory) {
+        return DepositVestingStatus(
+            _depositId,
+            userInfo[_user][_depositId].initialDepositAmount,
+            userInfo[_user][_depositId].depositAmount,
+            claimable(_user, _depositId),
+            userInfo[_user][_depositId].vestedUntil,
+            userInfo[_user][_depositId].vestingStartTime
+        );
+    }
+
+    function getVestingStatuses(address _user) external view returns(DepositVestingStatus[] memory) {
+        uint256 [] memory allDepositIds = allUserDepositIds[_user].values();
+        DepositVestingStatus[] memory vestingStatuses = new DepositVestingStatus[](allDepositIds.length);
+        for (uint256 i = 0; i < allDepositIds.length; i++) {
+            vestingStatuses[i] = getVestingStatus(_user, allDepositIds[i]);
+        }
+        return vestingStatuses;
     }
 
     function _addDeposit(address _user) internal virtual returns (UserInfo storage user, uint256 newDepositId) {
@@ -180,5 +244,6 @@ contract Vester is Ownable {
 
     function setTreasury(address _treasury) external onlyOwner {
         treasury = _treasury;
+        emit TreasurySet(_treasury);
     }
 }

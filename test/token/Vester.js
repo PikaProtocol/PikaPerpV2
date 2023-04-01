@@ -36,8 +36,7 @@ describe("Vester", function () {
 
   beforeEach(async function () {
     pika = await pikaContract.deploy("Pika", "PIKA", "1000000000000000000000000000", owner.address, treasury.address)
-    await pika.setTransfersAllowed(true);
-    esPika = await pikaContract.deploy("Pika", "PIKA", "1000000000000000000000000000", owner.address, owner.address)
+    esPika = await pikaContract.deploy("ePika", "ePIKA", "1000000000000000000000000000", owner.address, owner.address)
     vester = await vesterContract.deploy(esPika.address, pika.address, treasury.address);
     await pika.connect(owner).transfer(vester.address, "6000000000000000000000") //6000 pika
     await esPika.connect(owner).grantRole("0x9143236d81225394f3bd65b44e6e29fdf4d7ba0773d9bb3f5cc15eb80ba37777", owner.address)
@@ -58,25 +57,25 @@ describe("Vester", function () {
       expect(await vester.depositedAll(alice.address)).to.be.equal("2000000000000000000000")
       expect(await esPika.balanceOf(alice.address)).to.be.equal("8000000000000000000000")
 
-      assertAlmostEqual(await vester.connect(alice).claimableAll(alice.address), "400000000000000000000")
+      assertAlmostEqual(await vester.connect(alice).claimableAll(alice.address), "200000000000000000000")
 
       await provider.send("evm_increaseTime", [86400*365/2])
       await provider.send("evm_mine")
-      assertAlmostEqual(await vester.connect(alice).claimableAll(alice.address), "1200000000000000000000")
-      assertAlmostEqual(await vester.connect(alice).unvestedAll(alice.address), "800000000000000000000")
+      assertAlmostEqual(await vester.connect(alice).claimableAll(alice.address), "1100000000000000000000")
+      assertAlmostEqual(await vester.connect(alice).unvestedAll(alice.address), "900000000000000000000")
 
       await vester.connect(alice).claimAll();
       // console.log("pika balance", await pika.balanceOf(alice.address))
-      assertAlmostEqual(await pika.balanceOf(alice.address), "1200000000000000000000")
-      assertAlmostEqual(await pika.balanceOf(treasury.address), "800000000000000000000")
+      assertAlmostEqual(await pika.balanceOf(alice.address), "1100000000000000000000")
+      assertAlmostEqual(await pika.balanceOf(treasury.address), "900000000000000000000")
 
       await vester.connect(alice).deposit("1000000000000000000000")
       await provider.send("evm_increaseTime", [86400*365/4])
       await provider.send("evm_mine")
-      assertAlmostEqual(await vester.connect(alice).claimableAll(alice.address), "400000000000000000000")
+      assertAlmostEqual(await vester.connect(alice).claimableAll(alice.address), "325000000000000000000")
       await vester.connect(alice).claimAll();
-      assertAlmostEqual(await pika.balanceOf(treasury.address), "1400000000000000000000")
-      assertAlmostEqual(await pika.balanceOf(alice.address), "1600000000000000000000")
+      assertAlmostEqual(await pika.balanceOf(treasury.address), "1575000000000000000000")
+      assertAlmostEqual(await pika.balanceOf(alice.address), "1425000000000000000000")
       // console.log("vested", await vester.unvested(alice.address, 1), await vester.vested(alice.address, 1))
       await expect(vester.connect(alice).withdraw("250000000000000000000", 1)).to.be.revertedWith("nothing to withdraw")
       expect(await vester.connect(alice).claimableAll(alice.address)).to.be.equal("0")
@@ -86,28 +85,28 @@ describe("Vester", function () {
       await provider.send("evm_increaseTime", [86400*365/4])
       await provider.send("evm_mine")
       await vester.connect(alice).deposit("1000000000000000000000")
-      assertAlmostEqual(await vester.connect(alice).claimableAll(alice.address), "600000000000000000000")
-      assertAlmostEqual(await vester.connect(alice).unvestedAll(alice.address), "1400000000000000000000")
+      assertAlmostEqual(await vester.connect(alice).claimableAll(alice.address), "425000000000000000000")
+      assertAlmostEqual(await vester.connect(alice).unvestedAll(alice.address), "1575000000000000000000")
       await provider.send("evm_increaseTime", [86400*365])
       await provider.send("evm_mine")
       expect(await vester.connect(alice).claimableAll(alice.address)).to.be.equal("2000000000000000000000")
       expect(await vester.connect(alice).unvestedAll(alice.address)).to.be.equal("0")
       await vester.connect(alice).claimAll();
-      assertAlmostEqual(await pika.balanceOf(alice.address), "3600000000000000000000");
+      assertAlmostEqual(await pika.balanceOf(alice.address), "3425000000000000000000");
 
       await vester.connect(alice).deposit("1000000000000000000000")
       await provider.send("evm_increaseTime", [86400*365/4])
       await provider.send("evm_mine")
       await vester.connect(alice).withdraw("500000000000000000000", 7)
-      assertAlmostEqual(await vester.connect(alice).claimableAll(alice.address), "200000000000000000000");
-      assertAlmostEqual(await vester.connect(alice).unvestedAll(alice.address), "300000000000000000000");
+      assertAlmostEqual(await vester.connect(alice).claimableAll(alice.address), "162500000000000000000");
+      assertAlmostEqual(await vester.connect(alice).unvestedAll(alice.address), "337500000000000000000");
 
       await vester.connect(alice).claimAll();
-      assertAlmostEqual(await pika.balanceOf(alice.address), "3800000000000000000000");
-      assertAlmostEqual(await pika.balanceOf(treasury.address), "1700000000000000000000");
+      assertAlmostEqual(await pika.balanceOf(alice.address), "3587500000000000000000");
+      assertAlmostEqual(await pika.balanceOf(treasury.address), "1912500000000000000000");
       assertAlmostEqual(await pika.balanceOf(vester.address), "500000000000000000000");
-      assertAlmostEqual(await vester.totalPikaClaimed(), "3800000000000000000000");
-      assertAlmostEqual(await vester.totalClaimFee(), "1700000000000000000000");
+      assertAlmostEqual(await vester.totalPikaClaimed(), "3587500000000000000000");
+      assertAlmostEqual(await vester.totalClaimFee(), "1912500000000000000000");
       assertAlmostEqual(await vester.totalEsPikaDeposit(), "5500000000000000000000");
     })
   })
