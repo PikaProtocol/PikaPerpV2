@@ -245,6 +245,13 @@ describe("Trading", () => {
 			expect(position1.leverage).to.equal(leverage);
 			assertAlmostEqual(position1.price, price1);
 			// console.log("after open long", (await usdc.balanceOf(trading.address)).toString());
+			// modify position
+			await trading.connect(addrs[userId]).modifyMargin(positionId, margin, true);
+			const position3 = (await trading.getPositions([positionId]))[0];
+			expect(position3.leverage).to.equal(leverage/2);
+			await trading.connect(addrs[userId]).modifyMargin(positionId, margin, false);
+			const position4 = (await trading.getPositions([positionId]))[0];
+			expect(position4.leverage).to.equal(leverage);
 
 			// 2. increase position
 			const leverage2 = parseUnits(20)
@@ -350,6 +357,13 @@ describe("Trading", () => {
 			// expect(position1.funding).to.equal(314638);
 			assertAlmostEqual(position1.price, price1);
 			// console.log("after open short", (await usdc.balanceOf(trading.address)).toString());
+			// modify position
+			await trading.connect(addrs[userId]).modifyMargin(positionId, margin, true);
+			const position3 = (await trading.getPositions([positionId]))[0];
+			expect(position3.leverage).to.equal(leverage/2);
+			await trading.connect(addrs[userId]).modifyMargin(positionId, margin, false);
+			const position4 = (await trading.getPositions([positionId]))[0];
+			expect(position4.leverage).to.equal(leverage);
 
 			// 2. increase position
 			await provider.send("evm_increaseTime", [100])
