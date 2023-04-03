@@ -576,7 +576,8 @@ describe("Trading ETH", () => {
 			const closeOrder1 = (await orderbook.getCloseOrder(account1.address, 0));
 			expect(closeOrder1.size.toString()).to.be.equal(size);
 			// cancel close order
-			await orderbook.connect(account1).cancelCloseOrder(0);
+			await expect(orderbook.connect(account2).cancelCloseOrder(account1.address, 0)).to.be.revertedWith("PositionManager: no permission for account");
+			await orderbook.connect(account1).cancelCloseOrder(account1.address, 0);
 			const closeOrder2 = (await orderbook.getCloseOrder(account1.address, 0));
 			expect(closeOrder2.size.toString()).to.be.equal("0");
 			// create close order again
@@ -590,6 +591,11 @@ describe("Trading ETH", () => {
 			await orderbook.connect(account2).executeOrdersWithPrices([], [], [], [account1.address], [1], account2.address);
 			const position3 = await trading.getPosition(account1.address, 1, true);
 			expect(position3[4]).to.equal("0");
+			// create close order when there's no active position
+			await orderbook.connect(account1).createCloseOrder(account1.address, 1, size, true, "300000000000", false, {from: account1.address, value: "1000000000000000", gasPrice: gasPrice})
+			// the close order can be cancelled by non-owner because there's no active position
+			await orderbook.connect(account2).cancelCloseOrder(account1.address, 2);
+
 		})
 	});
 });

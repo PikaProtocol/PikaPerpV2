@@ -15,7 +15,7 @@ contract FeeCalculator is Governable {
     bool public isDiscountEnabled = false;
     mapping (address => uint256) public accountFeeDiscount;
 
-    uint256 public MAX_ACCOUNT_DISCOUNT = 5000; // 50%
+    uint256 public MAX_ACCOUNT_DISCOUNT = 3000; // 30%
 
     event SetIsDiscountEnabled(bool isDiscountEnabled);
     event SetDiscountForAccount(address indexed account, uint256 discount);
