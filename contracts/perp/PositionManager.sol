@@ -731,7 +731,7 @@ contract PositionManager is Governable, ReentrancyGuard {
 
     function _getTradeFeeRate(uint256 _productId, address _account) private returns(uint256) {
         (address productToken,,uint256 fee,,,,,,) = IPikaPerp(pikaPerp).getProduct(_productId);
-        return IFeeCalculator(feeCalculator).getFee(productToken, fee, _account, msg.sender);
+        return IFeeCalculator(feeCalculator).getFeeRate(productToken, fee, _account, msg.sender);
     }
 
     fallback() external payable {}

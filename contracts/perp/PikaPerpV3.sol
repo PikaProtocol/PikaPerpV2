@@ -320,7 +320,7 @@ contract PikaPerpV3 is ReentrancyGuard {
         require(leverage <= uint256(product.maxLeverage), "!max-lev");
 
         // Transfer margin plus fee
-        uint256 tradeFee = PerpLib._getTradeFee(margin, leverage, uint256(product.fee), product.productToken, user, msg.sender, feeCalculator);
+        uint256 tradeFee = IFeeCalculator(feeCalculator).getFee(margin, leverage, product.productToken, uint256(product.fee), user, msg.sender);
         IERC20(token).uniTransferFromSenderToThis((margin + tradeFee) * tokenBase / BASE);
 
         _updatePendingRewards(tradeFee);
@@ -484,7 +484,7 @@ contract PikaPerpV3 is ReentrancyGuard {
         uint256 fee,
         address productToken
     ) private returns(uint256) {
-        uint256 totalFee = PerpLib._getTradeFee(margin, uint256(position.leverage), fee, productToken, position.owner, msg.sender, feeCalculator);
+        uint256 totalFee = IFeeCalculator(feeCalculator).getFee(margin, uint256(position.leverage), productToken, fee, position.owner, msg.sender);
         int256 pnlAfterFee = pnl - int256(totalFee);
         // Update vault
         if (pnlAfterFee < 0) {

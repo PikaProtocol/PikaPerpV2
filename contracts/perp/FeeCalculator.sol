@@ -28,19 +28,34 @@ contract FeeCalculator is Governable {
     }
 
     /**
-     * @notice Get the fee for a token for an account
+     * @notice Get the trade fee of a trade for a token for an account
+     * @param margin the margin of the trade
+     * @param leverage the leverage of the trade
+     * @param token the underlying token for a product
+     * @param productFee the default fee for a product
+     * @param account the account to open position for. Some accounts may have discount in fees.
+     * @param sender the sender of a transaction. Some senders may have discount in fees.
+     * @return the total fee.
+     */
+    function getFee(uint256 margin, uint256 leverage, address token, uint256 productFee, address account, address sender) external view returns (uint256) {
+        uint256 feeRate = getFeeRate(token, productFee, account, sender);
+        return margin * leverage * feeRate / 10 ** 12;
+    }
+
+    /**
+     * @notice Get the fee rate for a token for an account
      * @param token the underlying token for a product
      * @param productFee the default fee for a product
      * @param account the account to open position for. Some accounts may have discount in fees.
      * @param sender the sender of a transaction. Some senders may have discount in fees.
      * @return the total fee rate.
      */
-    function getFee(address token, uint256 productFee, address account, address sender) external view returns (uint256) {
-        uint256 fee = productFee;
+    function getFeeRate(address token, uint256 productFee, address account, address sender) public view returns (uint256) {
+        uint256 feeRate = productFee;
         if (isDiscountEnabled) {
-            fee = fee * (PRICE_BASE - accountFeeDiscount[account]) / PRICE_BASE;
+            feeRate = feeRate * (PRICE_BASE - accountFeeDiscount[account]) / PRICE_BASE;
         }
-        return fee;
+        return feeRate;
     }
 
     function getDiscounts(address[] calldata accounts) external view returns(uint256[] memory discounts) {

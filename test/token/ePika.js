@@ -5,18 +5,18 @@ const { waffle } = require("hardhat")
 
 const provider = waffle.provider
 
-describe("ePika", function () {
+describe("EsPika", function () {
 
   before(async function () {
     this.wallets = provider.getWallets()
     this.owner = this.wallets[0]
     this.alice = this.wallets[1]
     this.bob = this.wallets[2]
-    this.pikaContract = await hre.ethers.getContractFactory("ePika")
+    this.pikaContract = await hre.ethers.getContractFactory("EsPika")
   })
 
   beforeEach(async function () {
-    this.epika = await this.pikaContract.deploy("ePika", "ePIKA", "1000000000000000000000000000", this.owner.address, this.owner.address)
+    this.epika = await this.pikaContract.deploy("EsPika", "EsPIKA", "1000000000000000000000000000", this.owner.address, this.owner.address)
   })
 
 

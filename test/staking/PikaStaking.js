@@ -30,7 +30,7 @@ describe("PikaStaking", function () {
         alice = this.wallets[1]
         bob = this.wallets[2]
         const pikaContract = await hre.ethers.getContractFactory("Pika")
-        const ePikaContract = await hre.ethers.getContractFactory("ePika")
+        const ePikaContract = await hre.ethers.getContractFactory("EsPika")
         const pikaStakingContract = await hre.ethers.getContractFactory("PikaStaking")
         const vePikaContract = await hre.ethers.getContractFactory("VePika")
         const testPikaPerpContract = await hre.ethers.getContractFactory("TestPikaPerp")
