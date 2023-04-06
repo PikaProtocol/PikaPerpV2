@@ -26,7 +26,8 @@ contract PositionRouter {
         uint256 _acceptablePrice,
         uint256 _executionFee,
         uint256 _stopLossPrice,
-        uint256 _takeProfitPrice
+        uint256 _takeProfitPrice,
+        bytes32 _referralCode
     ) external {
         IPositionManager(positionManager).createOpenPosition(
             msg.sender,
@@ -35,7 +36,8 @@ contract PositionRouter {
             _leverage,
             _isLong,
             _acceptablePrice,
-            _executionFee
+            _executionFee,
+            _referralCode
         );
         if (_stopLossPrice != 0) {
             IOrderBook(orderbook).createCloseOrder(

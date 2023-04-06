@@ -11,6 +11,7 @@ import '../lib/UniERC20.sol';
 import "./IPikaPerp.sol";
 import "./PikaPerpV3.sol";
 import "../access/Governable.sol";
+import "../referrals/IReferralStorage.sol";
 
 contract PositionManager is Governable, ReentrancyGuard {
     using SafeMath for uint256;
@@ -49,6 +50,7 @@ contract PositionManager is Governable, ReentrancyGuard {
     address public immutable pikaPerp;
     address public feeCalculator;
     address public oracle;
+    address public referralStorage;
     address public immutable collateralToken;
     uint256 public minExecutionFee;
 
@@ -107,7 +109,9 @@ contract PositionManager is Governable, ReentrancyGuard {
         uint256 executionFee,
         uint256 index,
         uint256 blockGap,
-        uint256 timeGap
+        uint256 timeGap,
+        bytes32 referralCode,
+        address referral
     );
 
     event CancelOpenPosition(
@@ -145,7 +149,9 @@ contract PositionManager is Governable, ReentrancyGuard {
         uint256 executionFee,
         uint256 index,
         uint256 blockGap,
-        uint256 timeGap
+        uint256 timeGap,
+        bytes32 referralCode,
+        address referral
     );
 
     event CancelClosePosition(
@@ -171,6 +177,7 @@ contract PositionManager is Governable, ReentrancyGuard {
     event SetAllowUserCloseOnly(bool allowUserCloseOnly);
     event SetManager(address manager, bool isActive);
     event SetAccountManager(address account, address manager, bool isActive);
+    event SetReferralStorage(address referralStorage);
     event SetAdmin(address admin);
 
     modifier onlyAdmin() {
@@ -248,6 +255,7 @@ contract PositionManager is Governable, ReentrancyGuard {
         emit SetAllowUserCloseOnly(_allowUserCloseOnly);
     }
 
+
     function setManager(address _manager, bool _isActive) external onlyAdmin {
         managers[_manager] = _isActive;
         emit SetManager(_manager, _isActive);
@@ -256,6 +264,11 @@ contract PositionManager is Governable, ReentrancyGuard {
     function setAccountManager(address _manager, bool _isActive) external {
         approvedManagers[msg.sender][_manager] = _isActive;
         emit SetAccountManager(msg.sender, _manager, _isActive);
+    }
+
+    function setReferralStorage(address _referralStorage) external onlyAdmin {
+        referralStorage = _referralStorage;
+        emit SetReferralStorage(_referralStorage);
     }
 
     function setAdmin(address _admin) external onlyGov {
@@ -379,7 +392,8 @@ contract PositionManager is Governable, ReentrancyGuard {
         uint256 _leverage,
         bool _isLong,
         uint256 _acceptablePrice,
-        uint256 _executionFee
+        uint256 _executionFee,
+        bytes32 _referralCode
     ) external payable nonReentrant {
         require(_executionFee >= minExecutionFee, "PositionManager: invalid executionFee");
         require(msg.sender == _account || _validateManager(_account), "PositionManager: no permission for account");
@@ -390,6 +404,8 @@ contract PositionManager is Governable, ReentrancyGuard {
             require(msg.value == _executionFee * 1e18 / BASE, "PositionManager: incorrect execution fee transferred");
             IERC20(collateralToken).uniTransferFromSenderToThis((_margin + tradeFee) * tokenBase / BASE);
         }
+
+        _setTraderReferralCode(_referralCode);
 
         _createOpenPosition(
             _account,
@@ -452,6 +468,11 @@ contract PositionManager is Governable, ReentrancyGuard {
 
         _executionFeeReceiver.sendValue(request.executionFee * 1e18 / BASE);
 
+        if (referralStorage == address(0)) {
+            return true;
+        }
+        (bytes32 referralCode, address referrer) = IReferralStorage(referralStorage).getTraderReferralInfo(request.account);
+
         emit ExecuteOpenPosition(
             request.account,
             request.productId,
@@ -463,7 +484,9 @@ contract PositionManager is Governable, ReentrancyGuard {
             request.executionFee,
             request.index,
             block.number.sub(request.blockNumber),
-            block.timestamp.sub(request.blockTime)
+            block.timestamp.sub(request.blockTime),
+            referralCode,
+            referrer
         );
 
         return true;
@@ -518,6 +541,11 @@ contract PositionManager is Governable, ReentrancyGuard {
 
         _executionFeeReceiver.sendValue(request.executionFee * 1e18 / BASE);
 
+        if (referralStorage == address(0)) {
+            return true;
+        }
+        (bytes32 referralCode, address referrer) = IReferralStorage(referralStorage).getTraderReferralInfo(request.account);
+
         emit ExecuteClosePosition(
             request.account,
             request.productId,
@@ -527,7 +555,9 @@ contract PositionManager is Governable, ReentrancyGuard {
             request.executionFee,
             request.index,
             block.number.sub(request.blockNumber),
-            block.timestamp.sub(request.blockTime)
+            block.timestamp.sub(request.blockTime),
+            referralCode,
+            referrer
         );
 
         return true;
@@ -724,6 +754,12 @@ contract PositionManager is Governable, ReentrancyGuard {
 
     function _validateManager(address account) private view returns(bool) {
         return managers[msg.sender] && approvedManagers[account][msg.sender];
+    }
+
+    function _setTraderReferralCode(bytes32 _referralCode) internal {
+        if (_referralCode != bytes32(0) && referralStorage != address(0)) {
+            IReferralStorage(referralStorage).setTraderReferralCode(msg.sender, _referralCode);
+        }
     }
 
     function _getTradeFeeRate(uint256 _productId, address _account) private returns(uint256) {

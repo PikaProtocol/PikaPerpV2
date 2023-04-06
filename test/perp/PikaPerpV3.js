@@ -12,8 +12,8 @@ const maxShift = 0.003e8; // max shift (shift is used adjust the price to balanc
 
 
 let latestPrice = 3000e8;
-
-let maxPrice = 100000000e8
+let maxPrice = 100000000e8;
+let referralCode = "0x657468657265756d000000000000000000000000000000000000000000000000";
 
 function getOraclePrice(feed) {
 	return latestPrice;
@@ -624,8 +624,7 @@ describe("Trading", () => {
 			await usdc.connect(account2).approve(positionManager.address, "10000000000000000000000")
 
 			// 1. cancel open order with user account
-			await positionManager.connect(account1).createOpenPosition(account1.address, 1, amount, leverage,  true, "300000000000", "100000", {from: account1.address, value:
-				executionFee, gasPrice: gasPrice})
+			await positionManager.connect(account1).createOpenPosition(account1.address, 1, amount, leverage,  true, "300000000000", "100000", referralCode, {from: account1.address, value: executionFee, gasPrice: gasPrice})
 			const openPositionRequest1 = (await positionManager.getOpenPositionRequest(account1.address, 1));
 			expect(openPositionRequest1.margin.toString()).to.be.equal(amount);
 			await expect(positionManager.connect(account2).cancelOpenPosition(getPositionKey(account1.address, 1), owner.address)).to.be.revertedWith("PositionManager: forbidden");
@@ -654,8 +653,7 @@ describe("Trading", () => {
 			expect(await provider.getBalance(positionManager.address)).to.be.equal("0")
 
 			// 3. execute open position with user account
-			await positionManager.connect(account1).createOpenPosition(account1.address, 1, amount, leverage,  true, "300000000000", "100000", {from: account1.address, value:
-				executionFee, gasPrice: gasPrice})
+			await positionManager.connect(account1).createOpenPosition(account1.address, 1, amount, leverage,  true, "300000000000", "100000", referralCode, {from: account1.address, value: executionFee, gasPrice: gasPrice})
 
 			await expect(positionManager.connect(account2).executeOpenPosition(getPositionKey(account1.address, 2), account2.address)).to.be.revertedWith('PositionManager: forbidden');
 			await expect(positionManager.connect(account1).executeOpenPosition(getPositionKey(account1.address, 2), account1.address)).to.be.revertedWith('PositionManager: min delay not yet passed for execution');
@@ -672,8 +670,7 @@ describe("Trading", () => {
 			expect(position1[5]).to.equal(account1.address);
 			expect(position1[7]).to.equal(true);
 			// cannot execute open position after max time
-			await positionManager.connect(account1).createOpenPosition(account1.address, 1, amount, leverage, true, "300000000000", "100000", {from: account1.address, value:
-				executionFee, gasPrice: gasPrice})
+			await positionManager.connect(account1).createOpenPosition(account1.address, 1, amount, leverage, true, "300000000000", "100000", referralCode, {from: account1.address, value: executionFee, gasPrice: gasPrice})
 			await provider.send("evm_increaseTime", [301])
 			await provider.send("evm_mine")
 			await expect(positionManager.connect(account1).executeOpenPosition(getPositionKey(account1.address, 3), account1.address)).to.be.revertedWith('PositionManager: request has expired');
@@ -687,8 +684,7 @@ describe("Trading", () => {
 			expect(position2[0]).to.equal("0");
 
 			// 4. execute open position with keeper account
-			await positionManager.connect(account1).createOpenPosition(account1.address, 1, amount, leverage,  true, "300000000000", "100000", {from: account1.address, value:
-				executionFee, gasPrice: gasPrice})
+			await positionManager.connect(account1).createOpenPosition(account1.address, 1, amount, leverage,  true, "300000000000", "100000", referralCode, {from: account1.address, value: executionFee, gasPrice: gasPrice})
 
 			await positionManager.connect(keeper).executePositionsWithPrices([], 4, 2, account2.address); // 'PositionManager: current price too low'
 			const position3 = await trading.getPosition(account1.address, 1, true);
@@ -697,8 +693,7 @@ describe("Trading", () => {
 			await provider.send("evm_mine")
 			await positionManager.connect(account1).cancelOpenPosition(getPositionKey(account1.address, 4), account1.address)
 
-			await positionManager.connect(account1).createOpenPosition(account1.address, 1, amount, leverage,  false, "300200000000", "100000", {from: account1.address, value:
-				executionFee, gasPrice: gasPrice})
+			await positionManager.connect(account1).createOpenPosition(account1.address, 1, amount, leverage,  false, "300200000000", "100000", referralCode, {from: account1.address, value: executionFee, gasPrice: gasPrice})
 			await positionManager.connect(keeper).executePositionsWithPrices([], 5, 2, account2.address); // 'PositionManager: current price too high'
 			const position4 = await trading.getPosition(account1.address, 1, false);
 			expect(position4[0]).to.equal("0");
@@ -706,8 +701,7 @@ describe("Trading", () => {
 			await provider.send("evm_mine")
 			await positionManager.connect(account1).cancelOpenPosition(getPositionKey(account1.address, 5), account1.address)
 
-			await positionManager.connect(account1).createOpenPosition(account1.address, 1, amount, leverage,  true, "300100000000", "100000", {from: account1.address, value:
-				executionFee, gasPrice: gasPrice})
+			await positionManager.connect(account1).createOpenPosition(account1.address, 1, amount, leverage,  true, "300100000000", "100000", referralCode, {from: account1.address, value: executionFee, gasPrice: gasPrice})
 			await positionManager.connect(keeper).executePositionsWithPrices([], 6, 2, account2.address);
 			// should not execute because of block time
 			const position5 = await trading.getPosition(account1.address, 1, true);
@@ -736,8 +730,7 @@ describe("Trading", () => {
 
 			// 8. execute close position with keeper account
 			// open long
-			await positionManager.connect(account1).createOpenPosition(account1.address, 1, amount, leverage,  true, "300100000000", "100000", {from: account1.address, value:
-				executionFee, gasPrice: gasPrice})
+			await positionManager.connect(account1).createOpenPosition(account1.address, 1, amount, leverage,  true, "300100000000", "100000", referralCode, {from: account1.address, value: executionFee, gasPrice: gasPrice})
 			await provider.send("evm_increaseTime", [30])
 			await provider.send("evm_mine")
 			await positionManager.connect(account1).executeOpenPosition(getPositionKey(account1.address, 7), account1.address)
@@ -751,7 +744,7 @@ describe("Trading", () => {
 			const position9 = await trading.getPosition(account1.address, 1, true);
 			expect(position9[0]).to.equal("1");
 			// open short
-			await positionManager.connect(account1).createOpenPosition(account1.address, 1, amount, leverage,  false, "300100000000", "100000", {from: account1.address, value:
+			await positionManager.connect(account1).createOpenPosition(account1.address, 1, amount, leverage,  false, "300100000000", "100000", referralCode, {from: account1.address, value:
 				executionFee, gasPrice: gasPrice})
 			await provider.send("evm_increaseTime", [30])
 			await provider.send("evm_mine")
@@ -787,11 +780,11 @@ describe("Trading", () => {
 			// 9. batch executions for long
 			await positionManager.connect(keeper).executePositionsWithPrices([], 100, 100, account2.address); // clear all previous pending requests
 			await positionManager.connect(owner).setDelayValues(5, 30, 30, 300);
-			await positionManager.connect(account2).createOpenPosition(account2.address, 1, amount, leverage,  true, "300100000000", "100000", {from: account2.address, value:
+			await positionManager.connect(account2).createOpenPosition(account2.address, 1, amount, leverage,  true, "300100000000", "100000", referralCode, {from: account2.address, value:
 				executionFee, gasPrice: gasPrice})
-			await positionManager.connect(account2).createOpenPosition(account2.address, 1, amount, leverage,  true, "300100000000", "100000", {from: account2.address, value:
+			await positionManager.connect(account2).createOpenPosition(account2.address, 1, amount, leverage,  true, "300100000000", "100000", referralCode, {from: account2.address, value:
 				executionFee, gasPrice: gasPrice})
-			await positionManager.connect(account2).createOpenPosition(account2.address, 1, amount, leverage,  true, "300000000000", "100000", {from: account2.address, value:
+			await positionManager.connect(account2).createOpenPosition(account2.address, 1, amount, leverage,  true, "300000000000", "100000", referralCode, {from: account2.address, value:
 				executionFee, gasPrice: gasPrice})
 
 			// all are skipped because of min block delay is not reached
@@ -828,11 +821,11 @@ describe("Trading", () => {
 
 			// 9. batch executions for short
 			await positionManager.connect(keeper).executePositionsWithPrices([], 100, 100, account1.address); // clear all previous pending requests
-			await positionManager.connect(account2).createOpenPosition(account2.address, 1, amount, leverage, false, "300100000000", "100000", {from: account2.address, value:
+			await positionManager.connect(account2).createOpenPosition(account2.address, 1, amount, leverage, false, "300100000000", "100000", referralCode, {from: account2.address, value:
 				executionFee, gasPrice: gasPrice})
-			await positionManager.connect(account2).createOpenPosition(account2.address, 1, amount, leverage, false, "300100000000", "100000", {from: account2.address, value:
+			await positionManager.connect(account2).createOpenPosition(account2.address, 1, amount, leverage, false, "300100000000", "100000", referralCode, {from: account2.address, value:
 				executionFee, gasPrice: gasPrice})
-			await positionManager.connect(account2).createOpenPosition(account2.address, 1, amount, leverage, false, "300200000000", "100000", {from: account2.address, value:
+			await positionManager.connect(account2).createOpenPosition(account2.address, 1, amount, leverage, false, "300200000000", "100000", referralCode, {from: account2.address, value:
 				executionFee, gasPrice: gasPrice})
 
 			// all are skipped because of min block delay is not reached

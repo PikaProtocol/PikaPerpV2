@@ -12,6 +12,7 @@ import '../lib/UniERC20.sol';
 import "./IPikaPerp.sol";
 import "./PikaPerpV3.sol";
 import "../access/Governable.sol";
+import "../referrals/IReferralStorage.sol";
 
 contract OrderBook is Governable, ReentrancyGuard {
     using SafeMath for uint256;
@@ -55,6 +56,7 @@ contract OrderBook is Governable, ReentrancyGuard {
     address public admin;
     address public oracle;
     address public feeCalculator;
+    address public referralStorage;
     uint256 public minExecutionFee;
     uint256 public minTimeCancelDelay;
     uint256 public constant BASE = 1e8;
@@ -98,7 +100,9 @@ contract OrderBook is Governable, ReentrancyGuard {
         bool triggerAboveThreshold,
         uint256 executionFee,
         uint256 executionPrice,
-        uint256 orderTimestamp
+        uint256 orderTimestamp,
+        bytes32 referralCode,
+        address referral
     );
     event UpdateOpenOrder(
         address indexed account,
@@ -144,7 +148,9 @@ contract OrderBook is Governable, ReentrancyGuard {
         bool triggerAboveThreshold,
         uint256 executionFee,
         uint256 executionPrice,
-        uint256 orderTimestamp
+        uint256 orderTimestamp,
+        bytes32 referralCode,
+        address referral
     );
     event UpdateCloseOrder(
         address indexed account,
@@ -165,6 +171,7 @@ contract OrderBook is Governable, ReentrancyGuard {
     event UpdateKeeper(address keeper, bool isAlive);
     event SetManager(address manager, bool isActive);
     event SetAccountManager(address account, address manager, bool isActive);
+    event SetReferralStorage(address referralStorage);
     event UpdateAdmin(address admin);
 
     modifier onlyAdmin() {
@@ -215,6 +222,11 @@ contract OrderBook is Governable, ReentrancyGuard {
     function setAccountManager(address _manager, bool _isActive) external {
         approvedManagers[msg.sender][_manager] = _isActive;
         emit SetAccountManager(msg.sender, _manager, _isActive);
+    }
+
+    function setReferralStorage(address _referralStorage) external onlyAdmin {
+        referralStorage = _referralStorage;
+        emit SetReferralStorage(_referralStorage);
     }
 
     function setAdmin(address _admin) external onlyGov {
@@ -485,6 +497,11 @@ contract OrderBook is Governable, ReentrancyGuard {
         // pay executor
         _feeReceiver.sendValue(order.executionFee * 1e18 / BASE);
 
+        if (referralStorage == address(0)) {
+            return;
+        }
+        (bytes32 referralCode, address referrer) = IReferralStorage(referralStorage).getTraderReferralInfo(order.account);
+
         emit ExecuteOpenOrder(
             order.account,
             _orderIndex,
@@ -497,7 +514,9 @@ contract OrderBook is Governable, ReentrancyGuard {
             order.triggerAboveThreshold,
             order.executionFee,
             currentPrice,
-            order.orderTimestamp
+            order.orderTimestamp,
+            referralCode,
+            referrer
         );
     }
 
@@ -574,6 +593,11 @@ contract OrderBook is Governable, ReentrancyGuard {
         // pay executor
         _feeReceiver.sendValue(order.executionFee * 1e18 / BASE);
 
+        if (referralStorage == address(0)) {
+            return;
+        }
+        (bytes32 referralCode, address referrer) = IReferralStorage(referralStorage).getTraderReferralInfo(order.account);
+
         emit ExecuteCloseOrder(
             order.account,
             _orderIndex,
@@ -584,7 +608,9 @@ contract OrderBook is Governable, ReentrancyGuard {
             order.triggerAboveThreshold,
             order.executionFee,
             currentPrice,
-            order.orderTimestamp
+            order.orderTimestamp,
+            referralCode,
+            referrer
         );
     }
 
