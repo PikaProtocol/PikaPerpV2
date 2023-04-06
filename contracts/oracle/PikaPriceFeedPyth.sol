@@ -22,7 +22,6 @@ contract PikaPriceFeedPyth is Governable {
     uint256 public defaultMaxPriceDiff = 2e16; // 2%
     uint256 public defaultSpread = 30; // 0.3%
 
-    event PriceSet(address token, uint256 price, uint256 timestamp);
     event PythSet(address pyth);
     event PriceDurationSet(uint256 priceDuration);
     event DefaultMaxPriceDiffSet(uint256 maxPriceDiff);
@@ -31,6 +30,7 @@ contract PikaPriceFeedPyth is Governable {
     event DefaultSpreadSet(uint256 defaultSpread);
     event SpreadSet(address token, uint256 spread);
     event IsChainlinkAvailableSet(address productToken, bool isChainlinkAvailable);
+    event SetPythFeed(address productToken, bytes32 pythFeedId);
     event SetOwner(address owner);
 
     uint256 public constant MAX_PRICE_DURATION = 30 minutes;
@@ -60,7 +60,7 @@ contract PikaPriceFeedPyth is Governable {
     }
 
     function getPriceAndStaleness(address token) public view returns (uint256, bool) {
-        (uint256 pythPrice, uint256 publishTime) = _getPythPrice(pythFeedMapping[token]);
+        (uint256 pythPrice, uint256 publishTime) = getPythPrice(pythFeedMapping[token]);
         if (isChainlinkAvailable[token]) {
             (uint256 chainlinkPrice, uint256 chainlinkTimestamp) = getChainlinkPrice(token);
             if (block.timestamp > publishTime.add(priceDuration) && chainlinkTimestamp > publishTime.add(priceDuration)) {
@@ -122,7 +122,7 @@ contract PikaPriceFeedPyth is Governable {
     }
 
     /// @dev Returns pyth price converted to 8 decimals
-    function _getPythPrice(bytes32 priceFeedId) private view returns (uint256, uint256) {
+    function getPythPrice(bytes32 priceFeedId) public view returns (uint256, uint256) {
 
         PythStructs.Price memory retrievedPrice = IPyth(pyth).getPriceUnsafe(priceFeedId);
         uint256 baseConversion = 10 ** uint256(int256(18) + retrievedPrice.expo);
@@ -183,6 +183,14 @@ contract PikaPriceFeedPyth is Governable {
         for (uint256 i = 0; i < _productTokens.length; i++) {
             isChainlinkAvailable[_productTokens[i]] = _isAvailables[i];
             emit IsChainlinkAvailableSet(_productTokens[i], _isAvailables[i]);
+        }
+    }
+
+    function setPythFeedMapping(address[] calldata _productTokens, bytes32[] calldata _pythFeedIds) external onlyOwner {
+        require(_productTokens.length == _pythFeedIds.length, "not same length");
+        for (uint256 i = 0; i < _productTokens.length; i++) {
+            pythFeedMapping[_productTokens[i]] = _pythFeedIds[i];
+            emit SetPythFeed(_productTokens[i], _pythFeedIds[i]);
         }
     }
 

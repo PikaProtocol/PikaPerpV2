@@ -74,17 +74,4 @@ library PerpLib {
         return isLong ? int256(margin * positionLeverage) * (IFundingManager(fundingManager).getFunding(productId) - funding) / int256(BASE * FUNDING_BASE) :
             int256(margin * positionLeverage) * (funding - IFundingManager(fundingManager).getFunding(productId)) / int256(BASE * FUNDING_BASE);
     }
-
-    function _getTradeFee(
-        uint256 margin,
-        uint256 leverage,
-        address productToken,
-        uint256 productFee,
-        address user,
-        address sender,
-        address feeCalculator
-    ) internal view returns(uint256) {
-        uint256 fee = IFeeCalculator(feeCalculator).getFee(margin, leverage, productToken, productFee, user, sender);
-        return margin * leverage / BASE * fee / 10**4;
-    }
 }
