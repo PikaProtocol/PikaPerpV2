@@ -9,7 +9,8 @@ interface IPositionManager {
         uint256 _leverage,
         bool _isLong,
         uint256 _acceptablePrice,
-        uint256 _executionFee
+        uint256 _executionFee,
+        bytes32 _referralCode
     ) external payable;
 
     function createClosePosition(
