@@ -108,7 +108,6 @@ contract PositionManager is Governable, ReentrancyGuard {
         uint256 acceptablePrice,
         uint256 executionFee,
         uint256 index,
-        uint256 blockGap,
         uint256 timeGap,
         bytes32 referralCode,
         address referral
@@ -456,9 +455,10 @@ contract PositionManager is Governable, ReentrancyGuard {
 
         (address productToken,,,,,,,,) = IPikaPerp(pikaPerp).getProduct(request.productId);
         uint256 oraclePrice = request.isLong ? IOracle(oracle).getPrice(productToken, true) : IOracle(oracle).getPrice(productToken, false);
-        bool shouldExecute = _validateExecution(request.blockNumber, request.blockTime, request.account, true, request.isLong, request.acceptablePrice, oraclePrice);
 
-        if (!shouldExecute) { return false; }
+        if (!_validateExecution(request.blockNumber, request.blockTime, request.account, true, request.isLong, request.acceptablePrice, oraclePrice)) {
+            return false;
+        }
 
         delete openPositionRequests[_key];
 
@@ -487,7 +487,6 @@ contract PositionManager is Governable, ReentrancyGuard {
             request.acceptablePrice,
             request.executionFee,
             request.index,
-            block.number.sub(request.blockNumber),
             block.timestamp.sub(request.blockTime),
             referralCode,
             referrer
