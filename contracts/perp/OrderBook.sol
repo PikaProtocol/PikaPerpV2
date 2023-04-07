@@ -47,6 +47,7 @@ contract OrderBook is Governable, ReentrancyGuard {
     mapping (address => uint256) public openOrdersIndex;
     mapping (address => mapping(uint256 => CloseOrder)) public closeOrders;
     mapping (address => uint256) public closeOrdersIndex;
+    mapping (address => bool) public isKeeper;
     mapping (address => bool) public managers;
     mapping (address => mapping (address => bool)) public approvedManagers;
 
@@ -59,6 +60,7 @@ contract OrderBook is Governable, ReentrancyGuard {
     address public referralStorage;
     uint256 public minExecutionFee;
     uint256 public minTimeCancelDelay;
+    bool public allowPublicKeeper = false;
     uint256 public constant BASE = 1e8;
     uint256 public constant FEE_BASE = 1e4;
 
@@ -229,6 +231,16 @@ contract OrderBook is Governable, ReentrancyGuard {
         emit SetReferralStorage(_referralStorage);
     }
 
+    function setAllowPublicKeeper(bool _allowPublicKeeper) external onlyAdmin {
+        allowPublicKeeper = _allowPublicKeeper;
+        emit UpdateAllowPublicKeeper(_allowPublicKeeper);
+    }
+
+    function setKeeper(address _account, bool _isActive) external onlyAdmin {
+        isKeeper[_account] = _isActive;
+        emit UpdateKeeper(_account, _isActive);
+    }
+
     function setAdmin(address _admin) external onlyGov {
         admin = _admin;
         emit UpdateAdmin(_admin);
@@ -242,6 +254,7 @@ contract OrderBook is Governable, ReentrancyGuard {
         uint256[] memory _closeOrderIndexes,
         address payable _feeReceiver
     ) external {
+        require(isKeeper[msg.sender] || allowPublicKeeper, "OrderBook: !keeper");
         IOracle(oracle).setPrices(_priceUpdateData);
         _executeOrders(_openAddresses, _openOrderIndexes, _closeAddresses, _closeOrderIndexes, _feeReceiver);
     }

@@ -16,6 +16,7 @@ contract PikaPriceFeedPyth is Governable {
     uint256 public priceDuration = 20; // 20 seconds
     mapping (address => uint256) public maxPriceDiffs;
     mapping (address => uint256) public spreads;
+    mapping(address => bool) public keepers;
     mapping (address => bytes32) public pythFeedMapping; // productToken => pythPriceFeedId
     mapping (address => bool) public isChainlinkAvailable;
     bool public isSpreadEnabled = false;
@@ -27,6 +28,7 @@ contract PikaPriceFeedPyth is Governable {
     event PriceDurationSet(uint256 priceDuration);
     event DefaultMaxPriceDiffSet(uint256 maxPriceDiff);
     event MaxPriceDiffSet(address token, uint256 maxPriceDiff);
+    event KeeperSet(address keeper, bool isActive);
     event IsSpreadEnabledSet(bool isSpreadEnabled);
     event DefaultSpreadSet(uint256 defaultSpread);
     event SpreadSet(address token, uint256 spread);
@@ -134,7 +136,7 @@ contract PikaPriceFeedPyth is Governable {
         return (price, publishTime);
     }
 
-    function setPrices(bytes[] calldata priceUpdateData) external payable {
+    function setPrices(bytes[] calldata priceUpdateData) external payable onlyKeeper {
         uint256 fee = IPyth(pyth).getUpdateFee(priceUpdateData);
         require(msg.value >= fee, '!fee');
         IPyth(pyth).updatePriceFeeds{value: fee}(priceUpdateData);
@@ -163,6 +165,11 @@ contract PikaPriceFeedPyth is Governable {
         emit MaxPriceDiffSet(_token, _maxPriceDiff);
     }
 
+    function setKeeper(address _keeper, bool _isActive) external onlyOwner {
+        keepers[_keeper] = _isActive;
+        emit KeeperSet(_keeper, _isActive);
+    }
+
     function setIsSpreadEnabled(bool _isSpreadEnabled) external onlyOwner {
         isSpreadEnabled = _isSpreadEnabled;
         emit IsSpreadEnabledSet(_isSpreadEnabled);
@@ -189,6 +196,11 @@ contract PikaPriceFeedPyth is Governable {
     function setOwner(address _owner) external onlyGov {
         owner = _owner;
         emit SetOwner(_owner);
+    }
+
+    modifier onlyKeeper() {
+        require(keepers[msg.sender], "!keepers");
+        _;
     }
 
     modifier onlyOwner() {
