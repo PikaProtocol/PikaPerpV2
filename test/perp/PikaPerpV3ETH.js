@@ -540,6 +540,7 @@ describe("Trading ETH", () => {
 			await oracle.setPrice(3001e8);
 			await trading.connect(owner).setManager(orderbook.address, true);
 			await trading.connect(account1).setAccountManager(orderbook.address, true);
+			await orderbook.connect(owner).setKeeper(account2.address, true);
 			let ethAmount = ((BigNumber.from(amount).add(BigNumber.from("100000"))).mul(BigNumber.from("10010000000"))).add(BigNumber.from("1000000000000000"));
 			// create open order
 			await orderbook.connect(account1).createOpenOrder(account1.address, 1, amount, leverage,  true, "300000000000", false, "100000", {from: account1.address, value:

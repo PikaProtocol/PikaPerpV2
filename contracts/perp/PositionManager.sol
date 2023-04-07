@@ -74,6 +74,8 @@ contract PositionManager is Governable, ReentrancyGuard {
     uint256 public constant BASE = 1e8;
     uint256 public constant FEE_BASE = 1e4;
 
+    mapping (address => bool) public isPositionKeeper;
+
     mapping (address => uint256) public openPositionsIndex;
     mapping (bytes32 => OpenPositionRequest) public openPositionRequests;
 
@@ -166,6 +168,7 @@ contract PositionManager is Governable, ReentrancyGuard {
     );
     event ExecuteOpenPositionError(address indexed account, uint256 index, string executionError);
     event ExecuteClosePositionError(address indexed account, uint256 index, string executionError);
+    event SetPositionKeeper(address indexed account, bool isActive);
     event SetMinExecutionFee(uint256 minExecutionFee);
     event SetIsUserExecuteEnabled(bool isUserExecuteEnabled);
     event SetIsUserCancelEnabled(bool isUserCancelEnabled);
@@ -207,6 +210,11 @@ contract PositionManager is Governable, ReentrancyGuard {
 
     function setOracle(address _oracle) external onlyAdmin {
         oracle = _oracle;
+    }
+
+    function setPositionKeeper(address _account, bool _isActive) external onlyAdmin {
+        isPositionKeeper[_account] = _isActive;
+        emit SetPositionKeeper(_account, _isActive);
     }
 
     function setMinExecutionFee(uint256 _minExecutionFee) external onlyAdmin {
@@ -289,6 +297,7 @@ contract PositionManager is Governable, ReentrancyGuard {
         uint256 _closeEndIndex,
         address payable _executionFeeReceiver
     ) public {
+        require(isPositionKeeper[msg.sender] || allowPublicKeeper, "PositionManager: !positionKeeper");
         IOracle(oracle).setPrices(_priceUpdateData);
         _executePositions(_openEndIndex, _closeEndIndex, _executionFeeReceiver);
     }
@@ -616,9 +625,9 @@ contract PositionManager is Governable, ReentrancyGuard {
 
     function canKeeperExecute() public view returns(bool) {
         return (openPositionRequestKeysStart < openPositionRequestKeys.length &&
-        openPositionRequests[openPositionRequestKeys[openPositionRequestKeysStart]].blockNumber.add(minBlockDelayKeeper) <= block.timestamp) ||
+        openPositionRequests[openPositionRequestKeys[openPositionRequestKeysStart]].blockNumber.add(minBlockDelayKeeper) <= block.number) ||
         (closePositionRequestKeysStart < closePositionRequestKeys.length &&
-        closePositionRequests[closePositionRequestKeys[closePositionRequestKeysStart]].blockNumber.add(minBlockDelayKeeper) <= block.timestamp);
+        closePositionRequests[closePositionRequestKeys[closePositionRequestKeysStart]].blockNumber.add(minBlockDelayKeeper) <= block.number);
     }
 
     function _validateExecution(uint256 _positionBlockNumber, uint256 _positionBlockTime, address _account,

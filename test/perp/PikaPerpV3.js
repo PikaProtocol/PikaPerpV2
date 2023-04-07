@@ -574,6 +574,7 @@ describe("Trading", () => {
 			await oracle.setPrice(3001e8);
 			await trading.connect(owner).setManager(orderbook.address, true);
 			await trading.connect(account1).setAccountManager(orderbook.address, true);
+			await orderbook.connect(owner).setKeeper(account2.address, true);
 			// await orderbook.connect(owner).setAllowPublicKeeper(true);
 			// let ethAmount = (BigNumber.from(amount).mul(BigNumber.from("10010000000")));
 			await usdc.connect(account1).approve(orderbook.address, "10000000000000000000000")
@@ -649,6 +650,7 @@ describe("Trading", () => {
 			await trading.connect(account2).setAccountManager(positionManager.address, true);
 			// await positionManager.connect(owner).setPositionKeeper(keeper.address, true);
 			await positionManager.connect(owner).setDelayValues(3, 30, 30, 300);
+			await positionManager.connect(owner).setPositionKeeper(keeper.address, true);
 			// let ethAmount = (BigNumber.from(amount).mul(BigNumber.from("10010000000")));
 			await usdc.connect(account1).approve(positionManager.address, "10000000000000000000000")
 			await usdc.connect(account2).approve(positionManager.address, "10000000000000000000000")
