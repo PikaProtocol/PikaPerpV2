@@ -289,7 +289,16 @@ contract OrderBook is Governable, ReentrancyGuard {
             cancelOpenOrder(_openOrderIndexes[i]);
         }
         for (uint256 i = 0; i < _closeOrderIndexes.length; i++) {
-            cancelCloseOrder(_closeOrderIndexes[i]);
+            cancelCloseOrder(msg.sender, _closeOrderIndexes[i]);
+        }
+    }
+
+    function cancelMultipleCloseOrder(
+        address[] memory _closeOrderAccounts,
+        uint256[] memory _closeOrderIndexes
+    ) external {
+        for (uint256 i = 0; i < _closeOrderIndexes.length; i++) {
+            cancelCloseOrder(_closeOrderAccounts[i], _closeOrderIndexes[i]);
         }
     }
 
@@ -361,7 +370,7 @@ contract OrderBook is Governable, ReentrancyGuard {
         uint256 _executionFee
     ) external payable nonReentrant {
         require(_executionFee >= minExecutionFee, "OrderBook: insufficient execution fee");
-
+        require(msg.sender == _account || _validateManager(_account), "PositionManager: no permission for account");
         uint256 tradeFee = _getTradeFeeRate(_productId, _account) * _margin * _leverage / (FEE_BASE * BASE);
         if (IERC20(collateralToken).isETH()) {
             IERC20(collateralToken).uniTransferFromSenderToThis((_executionFee + _margin + tradeFee) * tokenBase / BASE);
@@ -394,7 +403,7 @@ contract OrderBook is Governable, ReentrancyGuard {
         bool _triggerAboveThreshold,
         uint256 _executionFee
     ) private {
-        uint256 _orderIndex = openOrdersIndex[msg.sender];
+        uint256 _orderIndex = openOrdersIndex[_account];
         OpenOrder memory order = OpenOrder(
             _account,
             _productId,
@@ -627,14 +636,16 @@ contract OrderBook is Governable, ReentrancyGuard {
         );
     }
 
-    function cancelCloseOrder(uint256 _orderIndex) public nonReentrant {
+    function cancelCloseOrder(address _account, uint256 _orderIndex) public nonReentrant {
         CloseOrder memory order = closeOrders[msg.sender][_orderIndex];
         require(order.account != address(0), "OrderBook: non-existent order");
+        // close order can be cancelled by the order owner anytime, or by anyone if there's no active position for the order owner
+        require(msg.sender == _account || !_validatePosition(_account, order.productId, order.isLong), "PositionManager: no permission for account");
         require(order.orderTimestamp + minTimeCancelDelay < block.timestamp, "OrderBook: min time cancel delay not yet passed");
 
-        delete closeOrders[msg.sender][_orderIndex];
+        delete closeOrders[_account][_orderIndex];
 
-        payable(msg.sender).sendValue(order.executionFee * 1e18 / BASE);
+        payable(_account).sendValue(order.executionFee * 1e18 / BASE);
 
         emit CancelCloseOrder(
             order.account,
@@ -682,6 +693,11 @@ contract OrderBook is Governable, ReentrancyGuard {
 
     function _validateManager(address account) private view returns(bool) {
         return managers[msg.sender] && approvedManagers[account][msg.sender];
+    }
+
+    function _validatePosition(address _account, uint256 _productId, bool _isLong) private view returns(bool) {
+        (uint256 productId,,,,,,,,) = IPikaPerp(pikaPerp).getPosition(_account, _productId, _isLong);
+        return productId > 0;
     }
 
     fallback() external payable {}
