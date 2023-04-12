@@ -382,6 +382,10 @@ contract PikaPerpV3 is ReentrancyGuard {
             IERC20(token).uniTransferFromSenderToThis(margin * tokenBase / BASE);
             newMargin = uint256(position.margin) + margin;
         } else {
+            Product storage product = products[uint256(position.productId)];
+            int256 fundingPayment = PerpLib._getFundingPayment(fundingManager, position.isLong, position.productId, position.leverage, position.margin, position.funding);
+            int256 pnl = PerpLib._getPnl(position.isLong, position.price, position.leverage, position.margin, IOracle(oracle).getPrice(product.productToken)) - fundingPayment;
+            require (pnl > 0 || uint256(-1 * pnl) < uint256(position.margin) * liquidationThreshold / (10**4), "liquidatable");
             newMargin = uint256(position.margin) - margin;
             IERC20(token).uniTransfer(msg.sender, margin * tokenBase / BASE);
         }

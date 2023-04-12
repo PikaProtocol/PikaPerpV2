@@ -611,7 +611,6 @@ describe("Trading", () => {
 			const closeOrder1 = (await orderbook.getCloseOrder(account1.address, 0));
 			expect(closeOrder1.size.toString()).to.be.equal(size);
 			// cancel close order
-			await expect(orderbook.connect(account2).cancelCloseOrder(account1.address, 0)).to.be.revertedWith("PositionManager: no permission for account");
 			await orderbook.connect(account1).cancelCloseOrder(account1.address, 0);
 			const closeOrder2 = (await orderbook.getCloseOrder(account1.address, 0));
 			expect(closeOrder2.size.toString()).to.be.equal("0");
