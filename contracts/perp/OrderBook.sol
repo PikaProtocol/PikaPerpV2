@@ -370,7 +370,7 @@ contract OrderBook is Governable, ReentrancyGuard {
         uint256 _executionFee
     ) external payable nonReentrant {
         require(_executionFee >= minExecutionFee, "OrderBook: insufficient execution fee");
-
+        require(msg.sender == _account || _validateManager(_account), "PositionManager: no permission for account");
         uint256 tradeFee = _getTradeFeeRate(_productId, _account) * _margin * _leverage / (FEE_BASE * BASE);
         if (IERC20(collateralToken).isETH()) {
             IERC20(collateralToken).uniTransferFromSenderToThis((_executionFee + _margin + tradeFee) * tokenBase / BASE);
@@ -403,7 +403,7 @@ contract OrderBook is Governable, ReentrancyGuard {
         bool _triggerAboveThreshold,
         uint256 _executionFee
     ) private {
-        uint256 _orderIndex = openOrdersIndex[msg.sender];
+        uint256 _orderIndex = openOrdersIndex[_account];
         OpenOrder memory order = OpenOrder(
             _account,
             _productId,
