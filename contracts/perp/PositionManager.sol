@@ -72,7 +72,6 @@ contract PositionManager is Governable, ReentrancyGuard {
 
     uint256 public immutable tokenBase;
     uint256 public constant BASE = 1e8;
-    uint256 public constant FEE_BASE = 1e4;
 
     mapping (address => bool) public isPositionKeeper;
 
@@ -405,7 +404,7 @@ contract PositionManager is Governable, ReentrancyGuard {
     ) external payable nonReentrant {
         require(_executionFee >= minExecutionFee, "PositionManager: invalid executionFee");
         require(msg.sender == _account || _validateManager(_account), "PositionManager: no permission for account");
-        uint256 tradeFee = _getTradeFeeRate(_productId, _account) * _margin * _leverage / (FEE_BASE * BASE);
+        uint256 tradeFee = _getTradeFee(_margin, _leverage, _productId, _account);
         if (IERC20(collateralToken).isETH()) {
             IERC20(collateralToken).uniTransferFromSenderToThis((_executionFee + _margin + tradeFee) * tokenBase / BASE);
         } else {
@@ -773,9 +772,9 @@ contract PositionManager is Governable, ReentrancyGuard {
         }
     }
 
-    function _getTradeFeeRate(uint256 _productId, address _account) private returns(uint256) {
+    function _getTradeFee(uint256 margin, uint256 leverage, uint256 _productId, address _account) private returns(uint256) {
         (address productToken,,uint256 fee,,,,,,) = IPikaPerp(pikaPerp).getProduct(_productId);
-        return IFeeCalculator(feeCalculator).getFeeRate(productToken, fee, _account, msg.sender);
+        return IFeeCalculator(feeCalculator).getFee(margin, leverage, productToken, fee, _account, msg.sender);
     }
 
     fallback() external payable {}

@@ -9,22 +9,25 @@ import "../access/Governable.sol";
 
 contract FeeCalculator is Governable {
 
-    uint256 public constant PRICE_BASE = 10000;
     address public owner;
     address public keeper;
+    uint256 public feeBase;
     bool public isDiscountEnabled = false;
     mapping (address => uint256) public accountFeeDiscount;
 
-    uint256 public MAX_ACCOUNT_DISCOUNT = 3000; // 30%
+    uint256 public constant PRICE_BASE = 10000;
+    uint256 public constant BASE = 10 ** 8;
+    uint256 public constant MAX_ACCOUNT_DISCOUNT = 3000; // 30%
 
     event SetIsDiscountEnabled(bool isDiscountEnabled);
     event SetDiscountForAccount(address indexed account, uint256 discount);
     event SetOwner(address indexed owner);
     event SetKeeper(address indexed keeper);
 
-    constructor() public {
+    constructor(uint256 _feeBase) public {
         owner = msg.sender;
         keeper = msg.sender;
+        feeBase = _feeBase;
     }
 
     /**
@@ -39,7 +42,7 @@ contract FeeCalculator is Governable {
      */
     function getFee(uint256 margin, uint256 leverage, address token, uint256 productFee, address account, address sender) external view returns (uint256) {
         uint256 feeRate = getFeeRate(token, productFee, account, sender);
-        return margin * leverage * feeRate / 10 ** 12;
+        return margin * leverage * feeRate / (BASE * feeBase) ;
     }
 
     /**

@@ -47,7 +47,7 @@ contract PositionRouter {
         uint256 _takeProfitPrice,
         bytes32 _referralCode
     ) external payable {
-        uint256 tradeFee = _getTradeFeeRate(_productId, msg.sender) * _margin * _leverage / (FEE_BASE * BASE);
+        uint256 tradeFee = _getTradeFee(_margin, _leverage, _productId, msg.sender);
         IERC20(collateralToken).uniTransferFromSenderToThis((_margin + tradeFee) * tokenBase / BASE);
         IPositionManager(positionManager).createOpenPosition{value: _executionFee * 1e18 / BASE}(
             msg.sender,
@@ -112,8 +112,8 @@ contract PositionRouter {
         }
     }
 
-    function _getTradeFeeRate(uint256 _productId, address _account) private returns(uint256) {
+    function _getTradeFee(uint256 margin, uint256 leverage, uint256 _productId, address _account) private returns(uint256) {
         (address productToken,,uint256 fee,,,,,,) = IPikaPerp(pikaPerp).getProduct(_productId);
-        return IFeeCalculator(feeCalculator).getFee(productToken, fee, _account, msg.sender);
+        return IFeeCalculator(feeCalculator).getFee(margin, leverage, productToken, fee, _account, msg.sender);
     }
 }

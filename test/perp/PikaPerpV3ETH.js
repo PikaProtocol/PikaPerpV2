@@ -86,7 +86,7 @@ describe("Trading ETH", () => {
 		fundingManager = await fundingManagerContract.deploy();
 
 		const feeCalculatorContract = await ethers.getContractFactory("FeeCalculator");
-		feeCalculator = await feeCalculatorContract.deploy();
+		feeCalculator = await feeCalculatorContract.deploy(10000);
 		// feeCalculator = await feeCalculatorContract.deploy(40, 9000, oracle.address);
 
 		const tradingContract = await ethers.getContractFactory("PikaPerpV3");
@@ -115,7 +115,7 @@ describe("Trading ETH", () => {
 
 		const orderbookContract = await ethers.getContractFactory("OrderBook");
 		orderbook = await orderbookContract.deploy(trading.address, oracle.address, "0x0000000000000000000000000000000000000000", "1000000000000000000",
-			"100000", feeCalculator.address);
+			"100000", feeCalculator.address, "10000");
 
 		let v = [
 			100000000000, //1k eth cap

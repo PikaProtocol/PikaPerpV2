@@ -60,9 +60,9 @@ contract OrderBook is Governable, ReentrancyGuard {
     address public referralStorage;
     uint256 public minExecutionFee;
     uint256 public minTimeCancelDelay;
+    uint256 public feeBase;
     bool public allowPublicKeeper = false;
     uint256 public constant BASE = 1e8;
-    uint256 public constant FEE_BASE = 1e4;
 
     event CreateOpenOrder(
         address indexed account,
@@ -170,6 +170,7 @@ contract OrderBook is Governable, ReentrancyGuard {
     event UpdateMinTimeCancelDelay(uint256 minTimeCancelDelay);
     event UpdateAllowPublicKeeper(bool allowPublicKeeper);
     event UpdateMinExecutionFee(uint256 minExecutionFee);
+    event UpdateFeeBase(uint256 feeBase);
     event UpdateKeeper(address keeper, bool isAlive);
     event SetManager(address manager, bool isActive);
     event SetAccountManager(address account, address manager, bool isActive);
@@ -187,7 +188,8 @@ contract OrderBook is Governable, ReentrancyGuard {
         address _collateralToken,
         uint256 _tokenBase,
         uint256 _minExecutionFee,
-        address _feeCalculator
+        address _feeCalculator,
+        uint256 _feeBase
     ) public {
         admin = msg.sender;
         pikaPerp = _pikaPerp;
@@ -196,6 +198,7 @@ contract OrderBook is Governable, ReentrancyGuard {
         tokenBase = _tokenBase;
         minExecutionFee = _minExecutionFee;
         feeCalculator = _feeCalculator;
+        feeBase = _feeBase;
     }
 
     function setOracle(address _oracle) external onlyAdmin {
@@ -214,6 +217,12 @@ contract OrderBook is Governable, ReentrancyGuard {
     function setMinTimeCancelDelay(uint256 _minTimeCancelDelay) external onlyAdmin {
         minTimeCancelDelay = _minTimeCancelDelay;
         emit UpdateMinTimeCancelDelay(_minTimeCancelDelay);
+    }
+
+    function setFeeBase(uint256 _feeBase) external onlyAdmin {
+        require(_feeBase >= 10000, "too small");
+        feeBase = _feeBase;
+        emit UpdateFeeBase(_feeBase);
     }
 
     function setManager(address _manager, bool _isActive) external onlyAdmin {
@@ -371,7 +380,7 @@ contract OrderBook is Governable, ReentrancyGuard {
     ) external payable nonReentrant {
         require(_executionFee >= minExecutionFee, "OrderBook: insufficient execution fee");
         require(msg.sender == _account || _validateManager(_account), "PositionManager: no permission for account");
-        uint256 tradeFee = _getTradeFeeRate(_productId, _account) * _margin * _leverage / (FEE_BASE * BASE);
+        uint256 tradeFee = _getTradeFeeRate(_productId, _account) * _margin * _leverage / (feeBase * BASE);
         if (IERC20(collateralToken).isETH()) {
             IERC20(collateralToken).uniTransferFromSenderToThis((_executionFee + _margin + tradeFee) * tokenBase / BASE);
         } else {
@@ -442,7 +451,7 @@ contract OrderBook is Governable, ReentrancyGuard {
         OpenOrder storage order = openOrders[msg.sender][_orderIndex];
         require(order.account != address(0), "OrderBook: non-existent order");
         if (order.leverage != _leverage) {
-            uint256 margin = (order.margin + order.tradeFee) * BASE / (BASE + _getTradeFeeRate(order.productId, order.account) * _leverage / 10**4);
+            uint256 margin = (order.margin + order.tradeFee) * BASE / (BASE + _getTradeFeeRate(order.productId, order.account) * _leverage / feeBase);
             uint256 tradeFee = order.tradeFee + order.margin - margin;
             order.margin = margin;
             order.tradeFee = tradeFee;
