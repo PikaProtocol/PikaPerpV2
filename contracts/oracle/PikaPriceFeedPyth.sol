@@ -136,10 +136,14 @@ contract PikaPriceFeedPyth is Governable {
         return (price, publishTime);
     }
 
-    function setPrices(bytes[] calldata priceUpdateData) external payable onlyKeeper {
+    function setPrices(address sender, bytes[] calldata priceUpdateData) external payable onlyKeeper {
         uint256 fee = IPyth(pyth).getUpdateFee(priceUpdateData);
         require(msg.value >= fee, '!fee');
         IPyth(pyth).updatePriceFeeds{value: fee}(priceUpdateData);
+        if (msg.value - fee > 0) {
+            (bool success, ) = payable(sender).call{value: msg.value - fee}("");
+            require(success, "refund failed");
+        }
     }
 
     function setPyth(address _pyth) external onlyOwner {
