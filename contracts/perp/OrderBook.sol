@@ -253,9 +253,9 @@ contract OrderBook is Governable, ReentrancyGuard {
         address[] memory _closeAddresses,
         uint256[] memory _closeOrderIndexes,
         address payable _feeReceiver
-    ) external {
+    ) external payable {
         require(isKeeper[msg.sender] || allowPublicKeeper, "OrderBook: !keeper");
-        IOracle(oracle).setPrices(_priceUpdateData);
+        IOracle(oracle).setPrices{value: msg.value}(msg.sender, _priceUpdateData);
         _executeOrders(_openAddresses, _openOrderIndexes, _closeAddresses, _closeOrderIndexes, _feeReceiver);
     }
 
@@ -519,10 +519,11 @@ contract OrderBook is Governable, ReentrancyGuard {
         // pay executor
         _feeReceiver.sendValue(order.executionFee * 1e18 / BASE);
 
-        if (referralStorage == address(0)) {
-            return;
+        bytes32 referralCode;
+        address referrer;
+        if (referralStorage != address(0)) {
+            (referralCode, referrer) = IReferralStorage(referralStorage).getTraderReferralInfo(order.account);
         }
-        (bytes32 referralCode, address referrer) = IReferralStorage(referralStorage).getTraderReferralInfo(order.account);
 
         emit ExecuteOpenOrder(
             order.account,
@@ -615,10 +616,11 @@ contract OrderBook is Governable, ReentrancyGuard {
         // pay executor
         _feeReceiver.sendValue(order.executionFee * 1e18 / BASE);
 
-        if (referralStorage == address(0)) {
-            return;
+        bytes32 referralCode;
+        address referrer;
+        if (referralStorage != address(0)) {
+            (referralCode, referrer) = IReferralStorage(referralStorage).getTraderReferralInfo(order.account);
         }
-        (bytes32 referralCode, address referrer) = IReferralStorage(referralStorage).getTraderReferralInfo(order.account);
 
         emit ExecuteCloseOrder(
             order.account,

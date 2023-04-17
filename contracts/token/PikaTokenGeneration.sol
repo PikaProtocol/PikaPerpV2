@@ -95,7 +95,7 @@ contract PikaTokenGeneration is ReentrancyGuard {
     ) {
         require(_owner != address(0), "invalid owner address");
         require(_pika != address(0), "invalid token address");
-        require(saleWhitelistStart <= _saleStart, "invalid saleWhitelistStart");
+        require(_saleWhitelistStart <= _saleStart, "invalid saleWhitelistStart");
         require(_saleStart >= block.timestamp, "invalid saleStart");
         require(_saleClose > _saleStart, "invalid saleClose");
         require(_maxDepositsWhitelist > 0, "invalid maxDepositsWhitelist");

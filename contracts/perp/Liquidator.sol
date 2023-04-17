@@ -22,7 +22,8 @@ contract Liquidator is Governable {
     address public fundingManager;
     // a forever locked timelock account that was used one time to open positions to correct the totalOpenInterest in PikaPerpV3 and this account should never be liquidated
     address public immutable lockedAccount;
-    bool public allowPublicLiquidator;
+    bool public allowPublicKeeper = false;
+    bool public allowPublicLiquidator = false;
     uint256[] positionIds;
     mapping (address => bool) public isKeeper;
     mapping (address => bool) public isLiquidator;
@@ -54,8 +55,9 @@ contract Liquidator is Governable {
         address[] calldata accounts,
         uint256[] calldata productIds,
         bool[] calldata isLongs)
-    external onlyKeeper {
-        IOracle(priceFeed).setPrices(_priceUpdateData);
+    external payable {
+        require(isLiquidator[msg.sender] || allowPublicLiquidator, "!liquidator");
+        IOracle(priceFeed).setPrices{value: msg.value}(msg.sender, _priceUpdateData);
         liquidatePositions(accounts, productIds, isLongs);
     }
 

@@ -288,7 +288,7 @@ contract PositionManager is Governable, ReentrancyGuard {
         bytes[] calldata _priceUpdateData,
         uint256 n,
         address payable _executionFeeReceiver
-    ) external {
+    ) external payable {
         executePositionsWithPrices(_priceUpdateData, openPositionRequestKeysStart + n, closePositionRequestKeysStart + n, _executionFeeReceiver);
     }
 
@@ -297,9 +297,9 @@ contract PositionManager is Governable, ReentrancyGuard {
         uint256 _openEndIndex,
         uint256 _closeEndIndex,
         address payable _executionFeeReceiver
-    ) public {
+    ) public payable {
         require(isPositionKeeper[msg.sender] || allowPublicKeeper, "PositionManager: !positionKeeper");
-        IOracle(oracle).setPrices(_priceUpdateData);
+        IOracle(oracle).setPrices{value: msg.value}(msg.sender, _priceUpdateData);
         _executePositions(_openEndIndex, _closeEndIndex, _executionFeeReceiver);
     }
 
@@ -477,10 +477,11 @@ contract PositionManager is Governable, ReentrancyGuard {
 
         _executionFeeReceiver.sendValue(request.executionFee * 1e18 / BASE);
 
-        if (referralStorage == address(0)) {
-            return true;
+        bytes32 referralCode;
+        address referrer;
+        if (referralStorage != address(0)) {
+            (referralCode, referrer) = IReferralStorage(referralStorage).getTraderReferralInfo(request.account);
         }
-        (bytes32 referralCode, address referrer) = IReferralStorage(referralStorage).getTraderReferralInfo(request.account);
 
         emit ExecuteOpenPosition(
             request.account,
@@ -550,10 +551,11 @@ contract PositionManager is Governable, ReentrancyGuard {
 
         _executionFeeReceiver.sendValue(request.executionFee * 1e18 / BASE);
 
-        if (referralStorage == address(0)) {
-            return true;
+        bytes32 referralCode;
+        address referrer;
+        if (referralStorage != address(0)) {
+            (referralCode, referrer) = IReferralStorage(referralStorage).getTraderReferralInfo(request.account);
         }
-        (bytes32 referralCode, address referrer) = IReferralStorage(referralStorage).getTraderReferralInfo(request.account);
 
         emit ExecuteClosePosition(
             request.account,

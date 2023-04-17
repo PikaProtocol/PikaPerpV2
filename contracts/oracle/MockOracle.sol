@@ -11,7 +11,7 @@ contract MockOracle {
         price = _price;
     }
 
-    function setPrices(bytes[] calldata priceUpdateData) external payable {
+    function setPrices(address sender, bytes[] calldata priceUpdateData) external payable {
     }
 
     function getPrice(address feed) external view returns (uint256)  {
