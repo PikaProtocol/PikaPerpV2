@@ -32,6 +32,8 @@ contract PikaTokenGeneration is ReentrancyGuard {
     uint256 public saleClose;
     // Max cap on wei raised during whitelist
     uint256 public maxDepositsWhitelist;
+    // Max cap on wei raised
+    uint256 public maxDepositsTotal;
     // Pika Tokens allocated to this contract
     uint256 public pikaTokensAllocated;
     // Pika Tokens allocated to whitelist
@@ -75,6 +77,7 @@ contract PikaTokenGeneration is ReentrancyGuard {
     /// @param _saleStart time when the token sale starts
     /// @param _saleClose time when the token sale closes
     /// @param _maxDepositsWhitelist max cap on wei raised during whitelist
+    /// @param _maxDepositsTotal max cap on wei raised
     /// @param _pikaTokensAllocated Pika tokens allocated to this contract
     /// @param _whitelistMaxDeposit1 max deposit that can be done via the whitelist deposit fn for tier 1 whitelist address
     /// @param _whitelistMaxDeposit2 max deposit that can be done via the whitelist deposit fn for tier 2 whitelist address
@@ -87,6 +90,7 @@ contract PikaTokenGeneration is ReentrancyGuard {
         uint256 _saleStart,
         uint256 _saleClose,
         uint256 _maxDepositsWhitelist,
+        uint256 _maxDepositsTotal,
         uint256 _pikaTokensAllocated,
         uint256 _whitelistMaxDeposit1,
         uint256 _whitelistMaxDeposit2,
@@ -99,6 +103,7 @@ contract PikaTokenGeneration is ReentrancyGuard {
         require(_saleStart >= block.timestamp, "invalid saleStart");
         require(_saleClose > _saleStart, "invalid saleClose");
         require(_maxDepositsWhitelist > 0, "invalid maxDepositsWhitelist");
+        require(_maxDepositsTotal > 0, "invalid maxDepositsTotal");
         require(_pikaTokensAllocated > 0, "invalid pikaTokensAllocated");
 
         pika = IERC20(_pika);
@@ -107,6 +112,7 @@ contract PikaTokenGeneration is ReentrancyGuard {
         saleStart = _saleStart;
         saleClose = _saleClose;
         maxDepositsWhitelist = _maxDepositsWhitelist;
+        maxDepositsTotal = _maxDepositsTotal;
         pikaTokensAllocated = _pikaTokensAllocated;
         pikaTokensAllocatedWhitelist = pikaTokensAllocated.mul(50).div(100); // 50% of PikaTokensAllocated
         whitelistMaxDeposit1 = _whitelistMaxDeposit1;
@@ -120,6 +126,7 @@ contract PikaTokenGeneration is ReentrancyGuard {
     receive() external payable isEligibleSender nonReentrant {
         address beneficiary = msg.sender;
         require(beneficiary != address(0), "invalid address");
+        require(weiDeposited + msg.value <= maxDepositsTotal, "max deposit for public phase reached");
         require(saleStart <= block.timestamp, "sale hasn't started yet");
         require(block.timestamp <= saleClose, "sale has closed");
 
@@ -174,6 +181,7 @@ contract PikaTokenGeneration is ReentrancyGuard {
     /// @dev must be equivalent to receive()
     function deposit(address beneficiary) public payable isEligibleSender nonReentrant {
         require(beneficiary != address(0), "invalid address");
+        require(weiDeposited + msg.value <= maxDepositsTotal, "maximum deposits reached");
         require(saleStart <= block.timestamp, "sale hasn't started yet");
         require(block.timestamp <= saleClose, "sale has closed");
 

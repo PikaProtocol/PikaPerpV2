@@ -59,7 +59,7 @@ describe("PikaTokenGeneration", function () {
         const blockNumBefore = await ethers.provider.getBlockNumber();
         const blockBefore = await ethers.provider.getBlock(blockNumBefore);
         const currentTime = blockBefore.timestamp;
-        pikaTge = await pikaTgeContract.deploy(pika.address, owner.address, currentTime, currentTime + 86400, currentTime + 86400*2, "1000000000000000000", "100000000000000000000", "100000000000000000", "300000000000000000", "500000000000000000", root); // rinkeby
+        pikaTge = await pikaTgeContract.deploy(pika.address, owner.address, currentTime, currentTime + 86400, currentTime + 86400*2, "1000000000000000000", "5000000000000000000", "100000000000000000000", "100000000000000000", "300000000000000000", "500000000000000000", root); // rinkeby
         await pikaTge.deployed();
 
         await pika.transfer(pikaTge.address, "100000000000000000000")
@@ -129,6 +129,11 @@ describe("PikaTokenGeneration", function () {
             expect(await pikaTge.getCurrentPikaPrice()).to.be.equal("20000000000000000")
 
             await pikaTge.connect(tom).deposit(tom.address, {from: tom.address, value: "1800000000000000000"}) // 1.8eth
+
+            await expect(pikaTge.connect(david).deposit(david.address, {
+                from: david.address,
+                value: "2000000000000000000"
+            })).to.be.revertedWith("maximum deposits reached")
 
             expect(await pikaTge.getCurrentPikaPrice()).to.be.equal("40000000000000000")
 
