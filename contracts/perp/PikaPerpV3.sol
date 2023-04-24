@@ -334,8 +334,8 @@ contract PikaPerpV3 is ReentrancyGuard {
 
         Position storage position = positions[getPositionId(user, productId, isLong)];
         if (position.margin > 0) {
-            price = (uint256(position.margin) * position.leverage * uint256(position.price) + margin * leverage * price) /
-                (uint256(position.margin) * position.leverage + margin * leverage);
+            price = (uint256(position.margin) * position.leverage + margin * leverage) * BASE /
+                (uint256(position.margin) * position.leverage / uint256(position.price) + margin * leverage / price) / BASE;
             funding = (int256(uint256(position.margin)) * int256(uint256(position.leverage)) * int256(position.funding) + int256(margin * leverage) * funding) /
                 (int256(uint256(position.margin)) * int256(uint256(position.leverage)) + int256(margin * leverage));
             leverage = (uint256(position.margin) * uint256(position.leverage) + margin * leverage) / (uint256(position.margin) + margin);

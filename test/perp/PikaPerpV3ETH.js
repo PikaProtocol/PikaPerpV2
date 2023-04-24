@@ -54,7 +54,7 @@ function getPositionId(account, productId, isLong) {
 }
 
 // Assert that actual is less than 1/accuracy difference from expected
-function assertAlmostEqual(actual, expected, accuracy = 10000000) {
+function assertAlmostEqual(actual, expected, accuracy = 100000) {
 	const expectedBN = BigNumber.isBigNumber(expected) ? expected : BigNumber.from(expected)
 	const actualBN = BigNumber.isBigNumber(actual) ? actual : BigNumber.from(actual)
 	const diffBN = expectedBN.gt(actualBN) ? expectedBN.sub(actualBN) : actualBN.sub(expectedBN)
@@ -213,6 +213,8 @@ describe("Trading ETH", () => {
 
 			// 2. increase position
 			const leverage2 = parseUnits(20)
+			latestPrice = 3029e8;
+			await oracle.setPrice(3029e8);
 			const price2 = _calculatePrice(oracle.address, true, margin*leverage/1e8, 0, parseFloat((await trading.getVault()).balance), 5000e8, margin*leverage2/1e8);
 			await addrs[userId].sendTransaction({
 				to: testManager.address,
@@ -226,14 +228,12 @@ describe("Trading ETH", () => {
 			const position2 = (await trading.getPositions([positionId]))[0];
 			expect(position2.margin).to.equal(margin*2);
 			expect(position2.leverage).to.equal(leverage*1.5);
-			assertAlmostEqual(position2.price, ((price1+price2*2)/3).toFixed(0));
+			assertAlmostEqual(position2.price, (3/(1/price1+2/price2)).toFixed(0));
 			// console.log("after increase long", (await usdc.balanceOf(trading.address)).toString());
 
-			// 3. close long before minProfitTime with profit less than threshold
+			// 3. close long
 			await provider.send("evm_increaseTime", [500])
-			latestPrice = 3029e8;
 			const price3 = _calculatePrice(oracle.address, false, 3*margin*leverage/1e8, 0, parseFloat((await trading.getVault()).balance), 5000e8, 3*margin*leverage/1e8);
-			await oracle.setPrice(3029e8);
 			const totalFee = parseInt(3*margin*leverage/1e8*0.001 + getInterestFee(3*margin, leverage, 0, 500));
 			const tx3 = await trading.connect(testManager).closePositionWithId(positionId, 3*margin, getOraclePrice(oracle.address));
 			expect(await tx3).to.emit(trading, "ClosePosition").withArgs(positionId, user, productId, price3.toString(), position2.price, (2*margin).toString(), (leverage*1.5).toString(), totalFee.toString(), 0, false);

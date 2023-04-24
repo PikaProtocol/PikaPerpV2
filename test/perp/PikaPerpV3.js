@@ -255,13 +255,15 @@ describe("Trading", () => {
 
 			// 2. increase position
 			const leverage2 = parseUnits(20)
+			latestPrice = 3050e8;
+			await oracle.setPrice(3050e8);
 			const price2 = _calculatePrice(oracle.address, true, margin*leverage/1e8, 0, parseFloat((await trading.getVault()).balance), 50000000e8, margin*leverage2/1e8);
 			await trading.connect(testManager).openPosition(addrs[userId].address, productId, margin, true, leverage2.toString(), getOraclePrice(oracle.address));
 			const position2 = (await trading.getPositions([positionId]))[0];
 			expect(position2.margin).to.equal(margin*2);
 			expect(position2.leverage).to.equal(leverage*1.5);
 			// expect(position2.funding).to.equal(63); // 95*2/3
-			assertAlmostEqual(position2.price, ((price1+price2*2)/3).toFixed(0));
+			assertAlmostEqual(position2.price, (3/(1/price1+2/price2)).toFixed(0));
 
 			// await provider.send("evm_increaseTime", [100])
 			// await trading.connect(addrs[userId]).openPosition(addrs[userId].address, productId, margin, true, leverage2.toString());
@@ -367,6 +369,8 @@ describe("Trading", () => {
 
 			// 2. increase position
 			await provider.send("evm_increaseTime", [100])
+			latestPrice = 2050e8;
+			await oracle.setPrice(2050e8);
 			const leverage2 = parseUnits(20)
 			const price2 = _calculatePrice(oracle.address, false, 0, margin*leverage/1e8, parseFloat((await trading.getVault()).balance), 50000000e8, margin*leverage2/1e8);
 			await trading.connect(testManager).openPosition(addrs[userId].address, productId, margin, false, leverage2.toString(), getOraclePrice(oracle.address));
@@ -375,7 +379,7 @@ describe("Trading", () => {
 			expect(position2.leverage).to.equal(leverage*1.5);
 			// expect(position2.funding).to.equal(314638);
 			// console.log("postion2 price", position2.price.toString());
-			assertAlmostEqual(position2.price, ((price1+price2*2)/3).toFixed(0));
+			assertAlmostEqual(position2.price, (3/(1/price1+2/price2)).toFixed(0));
 			// console.log("after increase short", (await usdc.balanceOf(trading.address)).toString());
 
 			// 3. close short before minProfitTime with profit less than threshold
