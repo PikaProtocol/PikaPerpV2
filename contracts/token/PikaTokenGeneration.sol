@@ -56,7 +56,8 @@ contract PikaTokenGeneration is ReentrancyGuard {
         address indexed beneficiary,
         bool indexed isWhitelistDeposit,
         uint256 value,
-        uint256 time
+        uint256 time,
+        string referralCode
     );
     event TokenClaim(
         address indexed claimer,
@@ -137,7 +138,8 @@ contract PikaTokenGeneration is ReentrancyGuard {
             beneficiary,
             false,
             msg.value,
-            block.timestamp
+            block.timestamp,
+            ""
         );
     }
 
@@ -146,7 +148,8 @@ contract PikaTokenGeneration is ReentrancyGuard {
     /// @param merkleProof the merkle proof
     function depositForWhitelistedAddress(
         address beneficiary,
-        bytes32[] calldata merkleProof
+        bytes32[] calldata merkleProof,
+        string calldata referralCode
     ) external payable nonReentrant {
         require(beneficiary != address(0), "invalid address");
         require(beneficiary == msg.sender, "beneficiary not message sender");
@@ -172,14 +175,15 @@ contract PikaTokenGeneration is ReentrancyGuard {
             beneficiary,
             true,
             msg.value,
-            block.timestamp
+            block.timestamp,
+            referralCode
         );
     }
 
     /// Deposit
     /// @param beneficiary will be able to claim tokens after saleClose
     /// @dev must be equivalent to receive()
-    function deposit(address beneficiary) public payable isEligibleSender nonReentrant {
+    function deposit(address beneficiary, string calldata referralCode) public payable isEligibleSender nonReentrant {
         require(beneficiary != address(0), "invalid address");
         require(weiDeposited + msg.value <= maxDepositsTotal, "maximum deposits reached");
         require(saleStart <= block.timestamp, "sale hasn't started yet");
@@ -192,7 +196,8 @@ contract PikaTokenGeneration is ReentrancyGuard {
             beneficiary,
             false,
             msg.value,
-            block.timestamp
+            block.timestamp,
+            referralCode
         );
     }
 

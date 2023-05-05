@@ -74,20 +74,20 @@ describe("PikaTokenGeneration", function () {
             const davidProof = merkleTree.getHexProof(elements[3]);
 
             // whitelist sale
-            await expect(pikaTge.connect(joe).depositForWhitelistedAddress(joe.address, tomProof, {
+            await expect(pikaTge.connect(joe).depositForWhitelistedAddress(joe.address, tomProof, "", {
                 from: joe.address,
                 value: "100000000000000000"
             })).to.be.revertedWith("invalid proof")
 
-            await pikaTge.connect(tom).depositForWhitelistedAddress(tom.address, tomProof, {
+            await pikaTge.connect(tom).depositForWhitelistedAddress(tom.address, tomProof, "", {
                 from: tom.address,
                 value: "100000000000000000"
             })
-            await pikaTge.connect(alice).depositForWhitelistedAddress(alice.address, aliceProof, {
+            await pikaTge.connect(alice).depositForWhitelistedAddress(alice.address, aliceProof, "", {
                 from: alice.address,
                 value: "100000000000000000"
             })
-            await pikaTge.connect(bob).depositForWhitelistedAddress(bob.address, bobProof, {
+            await pikaTge.connect(bob).depositForWhitelistedAddress(bob.address, bobProof, "", {
                 from: bob.address,
                 value: "200000000000000000"
             })
@@ -95,16 +95,16 @@ describe("PikaTokenGeneration", function () {
             expect(await pikaTge.depositableLeftWhitelist(alice.address, "300000000000000000")).to.be.equal("200000000000000000")
             expect(await pikaTge.depositableLeftWhitelist(bob.address, "500000000000000000")).to.be.equal("300000000000000000")
 
-            await expect(pikaTge.connect(tom).depositForWhitelistedAddress(tom.address, tomProof, {
+            await expect(pikaTge.connect(tom).depositForWhitelistedAddress(tom.address, tomProof, "", {
                 from: tom.address,
                 value: "100000000000000000"
             })).to.be.revertedWith("user whitelist allocation used up")
-            await expect(pikaTge.connect(alice).depositForWhitelistedAddress(alice.address, aliceProof, {
+            await expect(pikaTge.connect(alice).depositForWhitelistedAddress(alice.address, aliceProof, "", {
                 from: alice.address,
                 value: "300000000000000000"
             })).to.be.revertedWith("user whitelist allocation used up")
 
-            await pikaTge.connect(alice).depositForWhitelistedAddress(alice.address, aliceProof, {
+            await pikaTge.connect(alice).depositForWhitelistedAddress(alice.address, aliceProof, "", {
                 from: alice.address,
                 value: "200000000000000000"
             })
@@ -113,7 +113,7 @@ describe("PikaTokenGeneration", function () {
             expect(await pikaTge.weiDepositedWhitelist()).to.be.equal("600000000000000000")
             expect(await pikaTge.weiDeposited()).to.be.equal("600000000000000000")
 
-            await expect(pikaTge.connect(david).depositForWhitelistedAddress(david.address, davidProof, {
+            await expect(pikaTge.connect(david).depositForWhitelistedAddress(david.address, davidProof, "", {
                 from: david.address,
                 value: "500000000000000000"
             })).to.be.revertedWith("maximum deposits for whitelist reached")
@@ -128,9 +128,9 @@ describe("PikaTokenGeneration", function () {
             await joe.sendTransaction({from: joe.address, to: pikaTge.address, value: "1000000000000000000"});
             expect(await pikaTge.getCurrentPikaPrice()).to.be.equal("20000000000000000")
 
-            await pikaTge.connect(tom).deposit(tom.address, {from: tom.address, value: "1800000000000000000"}) // 1.8eth
+            await pikaTge.connect(tom).deposit(tom.address, "", {from: tom.address, value: "1800000000000000000"}) // 1.8eth
 
-            await expect(pikaTge.connect(david).deposit(david.address, {
+            await expect(pikaTge.connect(david).deposit(david.address, "", {
                 from: david.address,
                 value: "2000000000000000000"
             })).to.be.revertedWith("maximum deposits reached")
@@ -163,7 +163,7 @@ describe("PikaTokenGeneration", function () {
             const davidProof = merkleTree.getHexProof(elements[3]);
 
             // whitelist sale
-            await pikaTge.connect(tom).depositForWhitelistedAddress(tom.address, tomProof, {from: tom.address, value: "100000000000000000"})
+            await pikaTge.connect(tom).depositForWhitelistedAddress(tom.address, tomProof, "", {from: tom.address, value: "100000000000000000"})
 
             // public sale
             await provider.send("evm_increaseTime", [86400+100])
