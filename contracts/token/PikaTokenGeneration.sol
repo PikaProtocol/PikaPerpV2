@@ -8,8 +8,11 @@ import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 import  "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
 /// @title Pika token generation contract(adapted from Jones Dao token generation contract)
-/// Phase 1: whitelisted address can get Pika with fixed price with a maximum ETH size per address
-/// Phase 2: any address can contribute any amount of ETH. The final price of the phase is decided by
+/// Whitelist Phase 1: whitelist address can get Pika with fixed price with a maximum ETH size that is same for each whitelist addresses
+/// Whitelist Phase 2: whitelist address can get Pika with fixed price with a remaining maximum ETH size allocated for each address(subtract amount in phase 1.1)
+/// (example: whitelist address A has 3 eth allocation for whitelist phase, and for the first 30 mins,
+/// each whitelist address can contribute 1 eth maximum, so A can contribute 1 eth in the first 30 mins, and 2 eth after 30 mins and before whitelist phase ends)
+/// Public Phase: any address can contribute any amount of ETH. The final price of the phase is decided by
 /// (total ETH contributed for this phase / total Pika tokens for this phase)
 contract PikaTokenGeneration is ReentrancyGuard {
     using SafeMath for uint256;
@@ -24,8 +27,10 @@ contract PikaTokenGeneration is ReentrancyGuard {
     uint256 public weiDepositedWhitelist;
     // Keeps track of ETH deposited
     uint256 public weiDeposited;
-    // Time when the token sale starts for whitelisted address
+    // Time when the whitelist phase 1 starts for whitelisted address with limited cap
     uint256 public saleWhitelistStart;
+    // Time when the whitelist phase 2 starts for whitelisted address with unlimited cap(still limited by individual cap)
+    uint256 public saleWhitelist2Start;
     // Time when the token sale starts
     uint256 public saleStart;
     // Time when the token sale closes
@@ -38,11 +43,13 @@ contract PikaTokenGeneration is ReentrancyGuard {
     uint256 public pikaTokensAllocated;
     // Pika Tokens allocated to whitelist
     uint256 public pikaTokensAllocatedWhitelist;
-    // Max ETH that can be deposited by tier 1 whitelist address
+    // Max deposit that can be done for each address before saleWhitelist2Start
+    uint256 public whitelistDepositLimit;
+    // Max ETH that can be deposited by tier 1 whitelist address for entire whitelist phase
     uint256 public whitelistMaxDeposit1;
-    // Max ETH that can be deposited by tier 2 whitelist address
+    // Max ETH that can be deposited by tier 2 whitelist address for entire whitelist phase
     uint256 public whitelistMaxDeposit2;
-    // Max ETH that can be deposited by tier 3 whitelist address
+    // Max ETH that can be deposited by tier 3 whitelist address for entire whitelist phase
     uint256 public whitelistMaxDeposit3;
     // Merkleroot of whitelisted addresses
     bytes32 public merkleRoot;
@@ -71,54 +78,58 @@ contract PikaTokenGeneration is ReentrancyGuard {
     );
     event WithdrawEth(uint256 amount);
     event WithdrawPika(uint256 amount);
+    event SaleStartUpdated(uint256 saleStart);
+    event SaleWhitelist2StartUpdated(uint256 saleWhitelist2Start);
+    event MaxDepositsWhitelistUpdated(uint256 maxDepositsWhitelist);
 
     /// @param _pika Pika
     /// @param _owner withdrawer
-    /// @param _saleWhitelistStart time when the token sale starts for whitelisted addresses
+    /// @param _saleWhitelistStart time when the whitelist phase 1 starts for whitelisted addresses with limited cap
+    /// @param _saleWhitelist2Start time when the whitelist phase 2 starts for whitelisted addresses with unlimited cap
     /// @param _saleStart time when the token sale starts
     /// @param _saleClose time when the token sale closes
-    /// @param _maxDepositsWhitelist max cap on wei raised during whitelist
-    /// @param _maxDepositsTotal max cap on wei raised
+    /// @param _maxDeposits max cap on wei raised during whitelist and max cap on wei raised
     /// @param _pikaTokensAllocated Pika tokens allocated to this contract
-    /// @param _whitelistMaxDeposit1 max deposit that can be done via the whitelist deposit fn for tier 1 whitelist address
-    /// @param _whitelistMaxDeposit2 max deposit that can be done via the whitelist deposit fn for tier 2 whitelist address
-    /// @param _whitelistMaxDeposit3 max deposit that can be done via the whitelist deposit fn for tier 3 whitelist address
+    /// @param _whitelistDepositLimit max deposit that can be done for each whitelist address before _saleWhitelist2Start
+    /// @param _whitelistMaxDeposits max deposit that can be done via the whitelist deposit fn for 3 tiers of whitelist addresses for entire whitelist phase
     /// @param _merkleRoot the merkle root of all the whitelisted addresses
     constructor(
         address _pika,
         address _owner,
         uint256 _saleWhitelistStart,
+        uint256 _saleWhitelist2Start,
         uint256 _saleStart,
         uint256 _saleClose,
-        uint256 _maxDepositsWhitelist,
-        uint256 _maxDepositsTotal,
+        uint256[] memory _maxDeposits,
         uint256 _pikaTokensAllocated,
-        uint256 _whitelistMaxDeposit1,
-        uint256 _whitelistMaxDeposit2,
-        uint256 _whitelistMaxDeposit3,
+        uint256 _whitelistDepositLimit,
+        uint256[] memory _whitelistMaxDeposits,
         bytes32 _merkleRoot
     ) {
         require(_owner != address(0), "invalid owner address");
         require(_pika != address(0), "invalid token address");
-        require(_saleWhitelistStart <= _saleStart, "invalid saleWhitelistStart");
-        require(_saleStart >= block.timestamp, "invalid saleStart");
+        require(_saleWhitelistStart <= _saleWhitelist2Start, "invalid saleWhitelistStart");
+        require(_saleWhitelistStart >= block.timestamp, "invalid saleWhitelistStart");
+        require(_saleStart > _saleWhitelist2Start, "invalid saleStart");
         require(_saleClose > _saleStart, "invalid saleClose");
-        require(_maxDepositsWhitelist > 0, "invalid maxDepositsWhitelist");
-        require(_maxDepositsTotal > 0, "invalid maxDepositsTotal");
+        require(_maxDeposits[0] > 0, "invalid maxDepositsWhitelist");
+        require(_maxDeposits[1] > 0, "invalid maxDepositsTotal");
         require(_pikaTokensAllocated > 0, "invalid pikaTokensAllocated");
 
         pika = IERC20(_pika);
         owner = _owner;
         saleWhitelistStart = _saleWhitelistStart;
+        saleWhitelist2Start = _saleWhitelist2Start;
         saleStart = _saleStart;
         saleClose = _saleClose;
-        maxDepositsWhitelist = _maxDepositsWhitelist;
-        maxDepositsTotal = _maxDepositsTotal;
+        maxDepositsWhitelist = _maxDeposits[0];
+        maxDepositsTotal = _maxDeposits[1];
         pikaTokensAllocated = _pikaTokensAllocated;
-        pikaTokensAllocatedWhitelist = pikaTokensAllocated.mul(50).div(100); // 50% of PikaTokensAllocated
-        whitelistMaxDeposit1 = _whitelistMaxDeposit1;
-        whitelistMaxDeposit2 = _whitelistMaxDeposit2;
-        whitelistMaxDeposit3 = _whitelistMaxDeposit3;
+        pikaTokensAllocatedWhitelist = pikaTokensAllocated.mul(50).div(190);
+        whitelistDepositLimit = _whitelistDepositLimit;
+        whitelistMaxDeposit1 = _whitelistMaxDeposits[0];
+        whitelistMaxDeposit2 = _whitelistMaxDeposits[1];
+        whitelistMaxDeposit3 = _whitelistMaxDeposits[2];
         merkleRoot = _merkleRoot;
     }
 
@@ -157,6 +168,11 @@ contract PikaTokenGeneration is ReentrancyGuard {
         require((weiDepositedWhitelist + msg.value) <= maxDepositsWhitelist, "maximum deposits for whitelist reached");
         require(saleWhitelistStart <= block.timestamp, "sale hasn't started yet");
         require(block.timestamp <= saleStart, "whitelist sale has closed");
+
+        // Whitelist phase 1 only allows deposits up to whitelistDepositLimit
+        if (block.timestamp < saleWhitelist2Start) {
+            require(depositsWhitelist[beneficiary] + msg.value <= whitelistDepositLimit, "whitelist phase 1 deposit limit reached");
+        }
 
         // Verify the merkle proof.
         uint256 whitelistMaxDeposit = verifyAndGetTierAmount(beneficiary, merkleProof);
@@ -347,6 +363,33 @@ contract PikaTokenGeneration is ReentrancyGuard {
         uint256 pikaForPublic = pikaTokensAllocated.sub(pikaForWl);
         uint256 priceForPublic = (weiDeposited.sub(weiDepositedWhitelist)).mul(1e18).div(pikaForPublic);
         return priceForPublic > minPrice ? priceForPublic : minPrice;
+    }
+
+    /// option to increase whitelist phase 2 sale start time
+    /// @param _saleWhitelist2Start new whitelist phase 2 start time
+    function setSaleWhitelist2Start(uint256 _saleWhitelist2Start) external onlyOwner {
+        // can only set new whitelist phase 2 start before sale starts
+        require(block.timestamp < saleStart, "already started");
+        // can only set new whitelist phase 2 start before the current public phase start, and after the current whitelist phase 2 start
+        require(_saleWhitelist2Start < saleStart && _saleWhitelist2Start > saleWhitelist2Start, "invalid sale start time");
+        saleWhitelist2Start = _saleWhitelist2Start;
+        emit SaleWhitelist2StartUpdated(_saleWhitelist2Start);
+    }
+
+    /// adjust whitelist allocation
+    /// @param _maxDepositsWhitelist new whitelist allocation
+    function setMaxDepositsWhitelist(uint256 _maxDepositsWhitelist) external onlyOwner {
+        require(block.timestamp < saleWhitelist2Start, "whitelist phase 1 already ended");
+        require(_maxDepositsWhitelist > maxDepositsWhitelist && _maxDepositsWhitelist <= maxDepositsTotal, "invalid max whitelist amount");
+        pikaTokensAllocatedWhitelist = pikaTokensAllocatedWhitelist * _maxDepositsWhitelist / maxDepositsWhitelist;
+        require(pikaTokensAllocatedWhitelist <= pikaTokensAllocated, "invalid max whitelist pika allocation amount");
+        maxDepositsWhitelist = _maxDepositsWhitelist;
+        emit MaxDepositsWhitelistUpdated(_maxDepositsWhitelist);
+    }
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "only owner");
+        _;
     }
 
     // Modifier is eligible sender modifier

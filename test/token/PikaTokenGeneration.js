@@ -23,7 +23,7 @@ function assertAlmostEqual(actual, expected, accuracy = 10000) {
 }
 
 describe("PikaTokenGeneration", function () {
-    let pikaTgeContract, pikaTge, owner, alice, bob, tom, david, joe, elements, merkleTree, pikaContract, pika;
+    let pikaTgeContract, pikaTge, owner, alice, bob, tom, david, joe, john, elements, merkleTree, pikaContract, pika, root, currentTime;
 
     beforeEach(async function () {
 
@@ -34,6 +34,7 @@ describe("PikaTokenGeneration", function () {
         tom = this.wallets[3]
         david = this.wallets[4]
         joe = this.wallets[5]
+        john = this.wallets[6]
         pikaTgeContract = await hre.ethers.getContractFactory("PikaTokenGeneration")
         pikaContract = await hre.ethers.getContractFactory("Pika")
 
@@ -43,7 +44,8 @@ describe("PikaTokenGeneration", function () {
             {address: tom.address, amount: "100000000000000000"},
             {address: alice.address, amount: "300000000000000000"},
             {address: bob.address, amount: "500000000000000000"},
-            {address: david.address, amount: "500000000000000000"}
+            {address: david.address, amount: "500000000000000000"},
+            {address: john.address, amount: "2000000000000000000"}
         ];
         // const users = [owner.address, alice.address, bob.address];
 
@@ -54,20 +56,20 @@ describe("PikaTokenGeneration", function () {
         );
         merkleTree = new MerkleTree(elements, keccak256, {sort: true});
 
-        const root = merkleTree.getHexRoot();
+        root = merkleTree.getHexRoot();
 
         const blockNumBefore = await ethers.provider.getBlockNumber();
         const blockBefore = await ethers.provider.getBlock(blockNumBefore);
-        const currentTime = blockBefore.timestamp;
-        pikaTge = await pikaTgeContract.deploy(pika.address, owner.address, currentTime, currentTime + 86400, currentTime + 86400*2, "1000000000000000000", "5000000000000000000", "100000000000000000000", "100000000000000000", "300000000000000000", "500000000000000000", root); // rinkeby
-        await pikaTge.deployed();
-
-        await pika.transfer(pikaTge.address, "100000000000000000000")
+        currentTime = blockBefore.timestamp;
 
     })
 
     describe("test tge", async function () {
         it("test tge", async function () {
+            let pikaTge = await pikaTgeContract.deploy(pika.address, owner.address, currentTime + 1, currentTime + 1800, currentTime + 86400, currentTime + 86400*2, ["1000000000000000000", "5000000000000000000"], "100000000000000000000", "100000000000000000", ["100000000000000000", "300000000000000000", "500000000000000000"], root);
+            await pikaTge.deployed();
+            await pika.transfer(pikaTge.address, "100000000000000000000")
+
             const tomProof = merkleTree.getHexProof(elements[0]);
             const aliceProof = merkleTree.getHexProof(elements[1]);
             const bobProof = merkleTree.getHexProof(elements[2]);
@@ -87,6 +89,14 @@ describe("PikaTokenGeneration", function () {
                 from: alice.address,
                 value: "100000000000000000"
             })
+            await expect(pikaTge.connect(bob).depositForWhitelistedAddress(bob.address, bobProof, "", {
+                from: bob.address,
+                value: "200000000000000000"
+            })).to.be.revertedWith("whitelist phase 1 deposit limit reached")
+
+            await provider.send("evm_increaseTime", [1800])
+            await provider.send("evm_mine")
+
             await pikaTge.connect(bob).depositForWhitelistedAddress(bob.address, bobProof, "", {
                 from: bob.address,
                 value: "200000000000000000"
@@ -153,10 +163,40 @@ describe("PikaTokenGeneration", function () {
             assertAlmostEqual((await provider.getBalance(owner.address)).sub(beforeOwnerBalance), contractEthBalance)
 
         })
+
+        it("test set max whitelist amount", async function () {
+            let pikaTge = await pikaTgeContract.deploy(pika.address, owner.address, currentTime + 1, currentTime + 1800, currentTime + 86400, currentTime + 86400*2, ["1000000000000000000", "5000000000000000000"], "100000000000000000000", "2000000000000000000", ["100000000000000000", "300000000000000000", "2000000000000000000"], root);
+            await pikaTge.deployed();
+            await pika.transfer(pikaTge.address, "100000000000000000000")
+
+            const johnProof = merkleTree.getHexProof(elements[4]);
+
+
+            await expect(pikaTge.connect(john).depositForWhitelistedAddress(john.address, johnProof, "", {
+                from: john.address,
+                value: "2000000000000000000"
+            })).to.be.revertedWith("maximum deposits for whitelist reached")
+
+            await pikaTge.connect(owner).setMaxDepositsWhitelist("2000000000000000000", {
+                from: owner.address
+            })
+
+            await pikaTge.connect(john).depositForWhitelistedAddress(john.address, johnProof, "", {
+                from: john.address,
+                value: "2000000000000000000"
+            })
+
+            expect(await pikaTge.getCurrentPikaPrice()).to.be.equal("20000000000000000")
+            expect(await pikaTge.pikaTokensAllocatedWhitelist()).to.be.equal("100000000000000000000")
+
+        })
     })
 
     describe("test tge with unsold Pika", async function () {
         it("test tge", async function () {
+            let pikaTge = await pikaTgeContract.deploy(pika.address, owner.address, currentTime + 1, currentTime + 1800, currentTime + 86400, currentTime + 86400*2, ["1000000000000000000", "5000000000000000000"], "100000000000000000000", "100000000000000000", ["100000000000000000", "300000000000000000", "500000000000000000"], root);
+            await pikaTge.deployed();
+            await pika.transfer(pikaTge.address, "100000000000000000000")
             const tomProof = merkleTree.getHexProof(elements[0]);
             const aliceProof = merkleTree.getHexProof(elements[1]);
             const bobProof = merkleTree.getHexProof(elements[2]);
