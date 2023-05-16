@@ -143,6 +143,7 @@ contract PikaTokenGeneration is ReentrancyGuard {
         require(block.timestamp <= saleClose, "sale has closed");
 
         deposits[beneficiary] = deposits[beneficiary].add(msg.value);
+        require(deposits[beneficiary] <= 100 ether, "maximum deposits per address reached");
         weiDeposited = weiDeposited.add(msg.value);
         emit TokenDeposit(
             msg.sender,
@@ -206,6 +207,7 @@ contract PikaTokenGeneration is ReentrancyGuard {
         require(block.timestamp <= saleClose, "sale has closed");
 
         deposits[beneficiary] = deposits[beneficiary].add(msg.value);
+        require(deposits[beneficiary] <= 100 ether, "maximum deposits per address reached");
         weiDeposited = weiDeposited.add(msg.value);
         emit TokenDeposit(
             msg.sender,
