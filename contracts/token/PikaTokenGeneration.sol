@@ -81,6 +81,7 @@ contract PikaTokenGeneration is ReentrancyGuard {
     event SaleStartUpdated(uint256 saleStart);
     event SaleWhitelist2StartUpdated(uint256 saleWhitelist2Start);
     event MaxDepositsWhitelistUpdated(uint256 maxDepositsWhitelist);
+    event MaxDepositsTotalUpdated(uint256 maxDepositsTotal);
 
     /// @param _pika Pika
     /// @param _owner withdrawer
@@ -378,7 +379,7 @@ contract PikaTokenGeneration is ReentrancyGuard {
         emit SaleWhitelist2StartUpdated(_saleWhitelist2Start);
     }
 
-    /// adjust whitelist allocation
+    /// adjust whitelist allocation in case whitelist is fully filled before whitelist phase 1 ends
     /// @param _maxDepositsWhitelist new whitelist allocation
     function setMaxDepositsWhitelist(uint256 _maxDepositsWhitelist) external onlyOwner {
         require(block.timestamp < saleWhitelist2Start, "whitelist phase 1 already ended");
@@ -387,6 +388,15 @@ contract PikaTokenGeneration is ReentrancyGuard {
         require(pikaTokensAllocatedWhitelist <= pikaTokensAllocated, "invalid max whitelist pika allocation amount");
         maxDepositsWhitelist = _maxDepositsWhitelist;
         emit MaxDepositsWhitelistUpdated(_maxDepositsWhitelist);
+    }
+
+    /// adjust max deposits amount total in case setMaxDepositsWhitelist is called or whitelist phase is not fully filled,
+    /// to make sure the max token price does not change for public phase
+    /// @param _maxDepositsTotal new max deposits total amount
+    function setMaxDepositsTotal(uint256 _maxDepositsTotal) external onlyOwner {
+        require(_maxDepositsTotal < maxDepositsTotal + maxDepositsWhitelist && _maxDepositsTotal > maxDepositsWhitelist, "invalid max deposit amount");
+        maxDepositsTotal = _maxDepositsTotal;
+        emit MaxDepositsTotalUpdated(_maxDepositsTotal);
     }
 
     modifier onlyOwner() {
