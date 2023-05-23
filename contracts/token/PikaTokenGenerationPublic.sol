@@ -41,8 +41,6 @@ contract PikaTokenGenerationPublic is ReentrancyGuard {
     uint256 public whitelistMaxDeposit3;
     // Merkleroot of whitelisted addresses
     bytes32 public merkleRoot;
-    // Amount each whitelisted user deposited
-    mapping(address => uint256) public depositsWhitelist;
     // Amount each user deposited
     mapping(address => uint256) public deposits;
 
@@ -54,18 +52,7 @@ contract PikaTokenGenerationPublic is ReentrancyGuard {
         uint256 time,
         string referralCode
     );
-    event TokenClaim(
-        address indexed claimer,
-        address indexed beneficiary,
-        uint256 amount
-    );
-    event EthRefundClaim(
-        address indexed claimer,
-        address indexed beneficiary,
-        uint256 amount
-    );
     event WithdrawEth(uint256 amount);
-    event WithdrawPika(uint256 amount);
     event MaxDepositsTotalUpdated(uint256 maxDepositsTotal);
 
     /// @param _owner withdrawer
@@ -90,7 +77,7 @@ contract PikaTokenGenerationPublic is ReentrancyGuard {
         require(_owner != address(0), "invalid owner address");
         require(_saleStart <= _sale2Start, "invalid saleStart");
         require(_saleStart >= block.timestamp, "invalid saleStart");
-        require(_saleClose > _saleStart, "invalid saleClose");
+        require(_saleClose > _saleStart2, "invalid saleClose");
         require(_minPrice > 0, "invalid minPrice");
         require(_maxDepositsTotal > 0, "invalid maxDepositsTotal");
         require(_pikaTokensAllocated > 0, "invalid pikaTokensAllocated");
@@ -162,7 +149,8 @@ contract PikaTokenGenerationPublic is ReentrancyGuard {
     function withdraw() external {
         require(owner == msg.sender, "caller is not the owner");
         uint256 ethBalance = payable(address(this)).balance;
-        payable(msg.sender).transfer(ethBalance);
+        (bool success, ) = msg.sender.call.value(ethBalance)("");
+        require(success, "transfer failed.");
 
         emit WithdrawEth(ethBalance);
     }
