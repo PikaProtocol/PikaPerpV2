@@ -8,11 +8,11 @@ import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 import  "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
 /// @title Pika token generation contract(adapted from Jones Dao token generation contract)
-/// Whitelist phase: only whitelisted address can participate with whitelisted amount.
-/// Public Phase: any address can contribute any amount of ETH.
+/// In the first 1 hour, only whitelisted address can participate with whitelisted amount.
+/// Afterwards, any address can contribute any amount of ETH.
 /// The final price of the both phases is decided by
 /// (total ETH contributed for this phase / total Pika tokens for this phase)
-contract PikaTokenGeneration is ReentrancyGuard {
+contract PikaTokenGenerationPublic is ReentrancyGuard {
     using SafeMath for uint256;
     using Math for uint256;
     using SafeERC20 for IERC20;
@@ -25,10 +25,6 @@ contract PikaTokenGeneration is ReentrancyGuard {
     uint256 public weiDepositedWhitelist;
     // Keeps track of ETH deposited
     uint256 public weiDeposited;
-    // Time when the whitelist phase 1 starts for whitelisted address with limited cap
-    uint256 public saleWhitelistStart;
-    // Time when the whitelist phase 2 starts for whitelisted address with unlimited cap(still limited by individual cap)
-    uint256 public saleWhitelist2Start;
     // Time when the token sale starts
     uint256 public saleStart;
     // Time when the token sale is open to public
@@ -165,11 +161,12 @@ contract PikaTokenGeneration is ReentrancyGuard {
             // Verify the merkle proof.
             uint256 whitelistMaxDeposit = verifyAndGetTierAmount(beneficiary, merkleProof);
             require(msg.value <= depositableLeftWhitelist(beneficiary, whitelistMaxDeposit), "user whitelist allocation used up");
-        } else {
-            deposits[beneficiary] = deposits[beneficiary].add(msg.value);
-            require(deposits[beneficiary] <= 100 ether, "maximum deposits per address reached");
-            weiDeposited = weiDeposited.add(msg.value);
         }
+
+        deposits[beneficiary] = deposits[beneficiary].add(msg.value);
+        require(deposits[beneficiary] <= 100 ether, "maximum deposits per address reached");
+        weiDeposited = weiDeposited.add(msg.value);
+
         emit TokenDeposit(
             msg.sender,
             beneficiary,
@@ -178,28 +175,6 @@ contract PikaTokenGeneration is ReentrancyGuard {
             block.timestamp,
             referralCode
         );
-    }
-
-    /// Claim
-    /// @param beneficiary receives the tokens they claimed
-    /// @dev claim calculation must be equivalent to claimAmount(address beneficiary)
-    function claim(address beneficiary) external nonReentrant returns (uint256) {
-        require(
-            deposits[beneficiary] + depositsWhitelist[beneficiary] > 0,
-            "no deposit"
-        );
-        require(block.timestamp > saleClose, "sale hasn't closed yet");
-
-        // total Pika allocated * user share in the ETH deposited
-        uint256 beneficiaryClaim = claimAmountPika(beneficiary);
-        depositsWhitelist[beneficiary] = 0;
-        deposits[beneficiary] = 0;
-
-        pika.safeTransfer(beneficiary, beneficiaryClaim);
-
-        emit TokenClaim(msg.sender, beneficiary, beneficiaryClaim);
-
-        return beneficiaryClaim;
     }
 
     /// @dev Withdraws eth deposited into the contract. Only owner can call this.
