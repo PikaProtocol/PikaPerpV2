@@ -8,11 +8,9 @@ import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 import  "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
 /// @title Pika token generation contract(adapted from Jones Dao token generation contract)
-/// Whitelist Phase 1: whitelist address can get Pika with fixed price with a maximum ETH size that is same for each whitelist addresses
-/// Whitelist Phase 2: whitelist address can get Pika with fixed price with a remaining maximum ETH size allocated for each address(subtract amount in phase 1.1)
-/// (example: whitelist address A has 3 eth allocation for whitelist phase, and for the first 30 mins,
-/// each whitelist address can contribute 1 eth maximum, so A can contribute 1 eth in the first 30 mins, and 2 eth after 30 mins and before whitelist phase ends)
-/// Public Phase: any address can contribute any amount of ETH. The final price of the phase is decided by
+/// Whitelist phase: only whitelisted address can participate with whitelisted amount.
+/// Public Phase: any address can contribute any amount of ETH.
+/// The final price of the both phases is decided by
 /// (total ETH contributed for this phase / total Pika tokens for this phase)
 contract PikaTokenGeneration is ReentrancyGuard {
     using SafeMath for uint256;
@@ -33,6 +31,8 @@ contract PikaTokenGeneration is ReentrancyGuard {
     uint256 public saleWhitelist2Start;
     // Time when the token sale starts
     uint256 public saleStart;
+    // Time when the token sale is open to public
+    uint256 public sale2Start;
     // Time when the token sale closes
     uint256 public saleClose;
     // Max cap on wei raised during whitelist
@@ -85,8 +85,6 @@ contract PikaTokenGeneration is ReentrancyGuard {
 
     /// @param _pika Pika
     /// @param _owner withdrawer
-    /// @param _saleWhitelistStart time when the whitelist phase 1 starts for whitelisted addresses with limited cap
-    /// @param _saleWhitelist2Start time when the whitelist phase 2 starts for whitelisted addresses with unlimited cap
     /// @param _saleStart time when the token sale starts
     /// @param _saleClose time when the token sale closes
     /// @param _maxDeposits max cap on wei raised during whitelist and max cap on wei raised
@@ -97,9 +95,8 @@ contract PikaTokenGeneration is ReentrancyGuard {
     constructor(
         address _pika,
         address _owner,
-        uint256 _saleWhitelistStart,
-        uint256 _saleWhitelist2Start,
         uint256 _saleStart,
+        uint256 _sale2Start,
         uint256 _saleClose,
         uint256[] memory _maxDeposits,
         uint256 _pikaTokensAllocated,
@@ -109,9 +106,8 @@ contract PikaTokenGeneration is ReentrancyGuard {
     ) {
         require(_owner != address(0), "invalid owner address");
         require(_pika != address(0), "invalid token address");
-        require(_saleWhitelistStart <= _saleWhitelist2Start, "invalid saleWhitelistStart");
-        require(_saleWhitelistStart >= block.timestamp, "invalid saleWhitelistStart");
-        require(_saleStart > _saleWhitelist2Start, "invalid saleStart");
+        require(_saleStart <= _sale2Start, "invalid saleStart");
+        require(_saleStart >= block.timestamp, "invalid saleStart");
         require(_saleClose > _saleStart, "invalid saleClose");
         require(_maxDeposits[0] > 0, "invalid maxDepositsWhitelist");
         require(_maxDeposits[1] > 0, "invalid maxDepositsTotal");
@@ -119,9 +115,8 @@ contract PikaTokenGeneration is ReentrancyGuard {
 
         pika = IERC20(_pika);
         owner = _owner;
-        saleWhitelistStart = _saleWhitelistStart;
-        saleWhitelist2Start = _saleWhitelist2Start;
         saleStart = _saleStart;
+        sale2Start = _sale2Start;
         saleClose = _saleClose;
         maxDepositsWhitelist = _maxDeposits[0];
         maxDepositsTotal = _maxDeposits[1];
@@ -137,6 +132,7 @@ contract PikaTokenGeneration is ReentrancyGuard {
     /// Deposit fallback
     /// @dev must be equivalent to deposit(address beneficiary)
     receive() external payable isEligibleSender nonReentrant {
+        require(block.timestamp >= sale2Start, "public phase 2 hasn't started yet");
         address beneficiary = msg.sender;
         require(beneficiary != address(0), "invalid address");
         require(weiDeposited + msg.value <= maxDepositsTotal, "max deposit for public phase reached");
@@ -156,60 +152,24 @@ contract PikaTokenGeneration is ReentrancyGuard {
         );
     }
 
-    /// Deposit for whitelisted address
-    /// @param beneficiary will be able to claim tokens after saleClose
-    /// @param merkleProof the merkle proof
-    function depositForWhitelistedAddress(
-        address beneficiary,
-        bytes32[] calldata merkleProof,
-        string calldata referralCode
-    ) external payable nonReentrant {
-        require(beneficiary != address(0), "invalid address");
-        require(beneficiary == msg.sender, "beneficiary not message sender");
-        require(msg.value > 0, "must deposit greater than 0");
-        require((weiDepositedWhitelist + msg.value) <= maxDepositsWhitelist, "maximum deposits for whitelist reached");
-        require(saleWhitelistStart <= block.timestamp, "sale hasn't started yet");
-        require(block.timestamp <= saleStart, "whitelist sale has closed");
-
-        // Whitelist phase 1 only allows deposits up to whitelistDepositLimit
-        if (block.timestamp < saleWhitelist2Start) {
-            require(depositsWhitelist[beneficiary] + msg.value <= whitelistDepositLimit, "whitelist phase 1 deposit limit reached");
-        }
-
-        // Verify the merkle proof.
-        uint256 whitelistMaxDeposit = verifyAndGetTierAmount(beneficiary, merkleProof);
-        require(msg.value <= depositableLeftWhitelist(beneficiary, whitelistMaxDeposit), "user whitelist allocation used up");
-
-        // Add user deposit to depositsWhitelist
-        depositsWhitelist[beneficiary] = depositsWhitelist[beneficiary].add(
-            msg.value
-        );
-
-        weiDepositedWhitelist = weiDepositedWhitelist.add(msg.value);
-        weiDeposited = weiDeposited.add(msg.value);
-
-        emit TokenDeposit(
-            msg.sender,
-            beneficiary,
-            true,
-            msg.value,
-            block.timestamp,
-            referralCode
-        );
-    }
-
     /// Deposit
     /// @param beneficiary will be able to claim tokens after saleClose
     /// @dev must be equivalent to receive()
-    function deposit(address beneficiary, string calldata referralCode) public payable isEligibleSender nonReentrant {
+    function deposit(address beneficiary, string calldata referralCode, bytes32[] calldata merkleProof) public payable isEligibleSender nonReentrant {
         require(beneficiary != address(0), "invalid address");
         require(weiDeposited + msg.value <= maxDepositsTotal, "maximum deposits reached");
         require(saleStart <= block.timestamp, "sale hasn't started yet");
         require(block.timestamp <= saleClose, "sale has closed");
 
-        deposits[beneficiary] = deposits[beneficiary].add(msg.value);
-        require(deposits[beneficiary] <= 100 ether, "maximum deposits per address reached");
-        weiDeposited = weiDeposited.add(msg.value);
+        if (block.timestamp < sale2Start) {
+            // Verify the merkle proof.
+            uint256 whitelistMaxDeposit = verifyAndGetTierAmount(beneficiary, merkleProof);
+            require(msg.value <= depositableLeftWhitelist(beneficiary, whitelistMaxDeposit), "user whitelist allocation used up");
+        } else {
+            deposits[beneficiary] = deposits[beneficiary].add(msg.value);
+            require(deposits[beneficiary] <= 100 ether, "maximum deposits per address reached");
+            weiDeposited = weiDeposited.add(msg.value);
+        }
         emit TokenDeposit(
             msg.sender,
             beneficiary,
@@ -331,7 +291,7 @@ contract PikaTokenGeneration is ReentrancyGuard {
     /// @param beneficiary user address
     /// @param whitelistMaxDeposit max deposit amount for user address
     function depositableLeftWhitelist(address beneficiary, uint256 whitelistMaxDeposit) public view returns (uint256) {
-        return whitelistMaxDeposit.sub(depositsWhitelist[beneficiary]);
+        return whitelistMaxDeposit.sub(deposits[beneficiary]);
     }
 
     function verifyAndGetTierAmount(address beneficiary, bytes32[] calldata merkleProof) public returns(uint256) {
@@ -368,33 +328,11 @@ contract PikaTokenGeneration is ReentrancyGuard {
         return priceForPublic > minPrice ? priceForPublic : minPrice;
     }
 
-    /// option to increase whitelist phase 2 sale start time
-    /// @param _saleWhitelist2Start new whitelist phase 2 start time
-    function setSaleWhitelist2Start(uint256 _saleWhitelist2Start) external onlyOwner {
-        // can only set new whitelist phase 2 start before sale starts
-        require(block.timestamp < saleStart, "already started");
-        // can only set new whitelist phase 2 start before the current public phase start, and after the current whitelist phase 2 start
-        require(_saleWhitelist2Start < saleStart && _saleWhitelist2Start > saleWhitelist2Start, "invalid sale start time");
-        saleWhitelist2Start = _saleWhitelist2Start;
-        emit SaleWhitelist2StartUpdated(_saleWhitelist2Start);
-    }
-
-    /// adjust whitelist allocation in case whitelist is fully filled before whitelist phase 1 ends
-    /// @param _maxDepositsWhitelist new whitelist allocation
-    function setMaxDepositsWhitelist(uint256 _maxDepositsWhitelist) external onlyOwner {
-        require(block.timestamp < saleWhitelist2Start, "whitelist phase 1 already ended");
-        require(_maxDepositsWhitelist > maxDepositsWhitelist && _maxDepositsWhitelist <= maxDepositsTotal, "invalid max whitelist amount");
-        pikaTokensAllocatedWhitelist = pikaTokensAllocatedWhitelist * _maxDepositsWhitelist / maxDepositsWhitelist;
-        require(pikaTokensAllocatedWhitelist <= pikaTokensAllocated, "invalid max whitelist pika allocation amount");
-        maxDepositsWhitelist = _maxDepositsWhitelist;
-        emit MaxDepositsWhitelistUpdated(_maxDepositsWhitelist);
-    }
 
     /// adjust max deposits amount total in case setMaxDepositsWhitelist is called or whitelist phase is not fully filled,
     /// to make sure the max token price does not change for public phase
     /// @param _maxDepositsTotal new max deposits total amount
     function setMaxDepositsTotal(uint256 _maxDepositsTotal) external onlyOwner {
-        require(_maxDepositsTotal < maxDepositsTotal + maxDepositsWhitelist && _maxDepositsTotal > maxDepositsWhitelist, "invalid max deposit amount");
         maxDepositsTotal = _maxDepositsTotal;
         emit MaxDepositsTotalUpdated(_maxDepositsTotal);
     }
