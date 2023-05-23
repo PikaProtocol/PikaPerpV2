@@ -17,12 +17,8 @@ contract PikaTokenGenerationPublic is ReentrancyGuard {
     using Math for uint256;
     using SafeERC20 for IERC20;
 
-    // Pika Token
-    IERC20 public pika;
     // Withdrawer
     address public owner;
-    // Keeps track of ETH deposited during whitelist phase
-    uint256 public weiDepositedWhitelist;
     // Keeps track of ETH deposited
     uint256 public weiDeposited;
     // Time when the token sale starts
@@ -31,16 +27,12 @@ contract PikaTokenGenerationPublic is ReentrancyGuard {
     uint256 public sale2Start;
     // Time when the token sale closes
     uint256 public saleClose;
-    // Max cap on wei raised during whitelist
-    uint256 public maxDepositsWhitelist;
+    // Min price of the sale
+    uint256 public minPrice;
     // Max cap on wei raised
     uint256 public maxDepositsTotal;
     // Pika Tokens allocated to this contract
     uint256 public pikaTokensAllocated;
-    // Pika Tokens allocated to whitelist
-    uint256 public pikaTokensAllocatedWhitelist;
-    // Max deposit that can be done for each address before saleWhitelist2Start
-    uint256 public whitelistDepositLimit;
     // Max ETH that can be deposited by tier 1 whitelist address for entire whitelist phase
     uint256 public whitelistMaxDeposit1;
     // Max ETH that can be deposited by tier 2 whitelist address for entire whitelist phase
@@ -74,51 +66,42 @@ contract PikaTokenGenerationPublic is ReentrancyGuard {
     );
     event WithdrawEth(uint256 amount);
     event WithdrawPika(uint256 amount);
-    event SaleStartUpdated(uint256 saleStart);
-    event SaleWhitelist2StartUpdated(uint256 saleWhitelist2Start);
-    event MaxDepositsWhitelistUpdated(uint256 maxDepositsWhitelist);
     event MaxDepositsTotalUpdated(uint256 maxDepositsTotal);
 
-    /// @param _pika Pika
     /// @param _owner withdrawer
     /// @param _saleStart time when the token sale starts
     /// @param _saleClose time when the token sale closes
-    /// @param _maxDeposits max cap on wei raised during whitelist and max cap on wei raised
+    /// @param _minPrice min price of the sale
+    /// @param _maxDepositsTotal max cap on wei raised during public phase
     /// @param _pikaTokensAllocated Pika tokens allocated to this contract
-    /// @param _whitelistDepositLimit max deposit that can be done for each whitelist address before _saleWhitelist2Start
     /// @param _whitelistMaxDeposits max deposit that can be done via the whitelist deposit fn for 3 tiers of whitelist addresses for entire whitelist phase
     /// @param _merkleRoot the merkle root of all the whitelisted addresses
     constructor(
-        address _pika,
         address _owner,
         uint256 _saleStart,
         uint256 _sale2Start,
         uint256 _saleClose,
-        uint256[] memory _maxDeposits,
+        uint256 _minPrice,
+        uint256 _maxDepositsTotal,
         uint256 _pikaTokensAllocated,
-        uint256 _whitelistDepositLimit,
         uint256[] memory _whitelistMaxDeposits,
         bytes32 _merkleRoot
     ) {
         require(_owner != address(0), "invalid owner address");
-        require(_pika != address(0), "invalid token address");
         require(_saleStart <= _sale2Start, "invalid saleStart");
         require(_saleStart >= block.timestamp, "invalid saleStart");
         require(_saleClose > _saleStart, "invalid saleClose");
-        require(_maxDeposits[0] > 0, "invalid maxDepositsWhitelist");
-        require(_maxDeposits[1] > 0, "invalid maxDepositsTotal");
+        require(_minPrice > 0, "invalid minPrice");
+        require(_maxDepositsTotal > 0, "invalid maxDepositsTotal");
         require(_pikaTokensAllocated > 0, "invalid pikaTokensAllocated");
 
-        pika = IERC20(_pika);
         owner = _owner;
         saleStart = _saleStart;
         sale2Start = _sale2Start;
         saleClose = _saleClose;
-        maxDepositsWhitelist = _maxDeposits[0];
-        maxDepositsTotal = _maxDeposits[1];
+        minPrice = _minPrice;
+        maxDepositsTotal = _maxDepositsTotal;
         pikaTokensAllocated = _pikaTokensAllocated;
-        pikaTokensAllocatedWhitelist = pikaTokensAllocated.mul(50).div(190);
-        whitelistDepositLimit = _whitelistDepositLimit;
         whitelistMaxDeposit1 = _whitelistMaxDeposits[0];
         whitelistMaxDeposit2 = _whitelistMaxDeposits[1];
         whitelistMaxDeposit3 = _whitelistMaxDeposits[2];
@@ -130,9 +113,7 @@ contract PikaTokenGenerationPublic is ReentrancyGuard {
     receive() external payable isEligibleSender nonReentrant {
         require(block.timestamp >= sale2Start, "public phase 2 hasn't started yet");
         address beneficiary = msg.sender;
-        require(beneficiary != address(0), "invalid address");
         require(weiDeposited + msg.value <= maxDepositsTotal, "max deposit for public phase reached");
-        require(saleStart <= block.timestamp, "sale hasn't started yet");
         require(block.timestamp <= saleClose, "sale has closed");
 
         deposits[beneficiary] = deposits[beneficiary].add(msg.value);
@@ -186,33 +167,17 @@ contract PikaTokenGenerationPublic is ReentrancyGuard {
         emit WithdrawEth(ethBalance);
     }
 
-    /// @dev Withdraws unsold PIKA tokens(if any). Only owner can call this.
-    function withdrawUnsoldPika() external {
-        require(owner == msg.sender, "caller is not the owner");
-        uint256 unsoldAmount = getUnsoldPika();
-        pika.safeTransfer(owner, unsoldAmount);
-
-        emit WithdrawPika(unsoldAmount);
-    }
-
     function getUnsoldPika() public view returns(uint256) {
         require(block.timestamp > saleClose, "sale has not ended");
-        // amount of Pika unsold during whitelist sale
-        uint256 unsoldWlPika = pikaTokensAllocatedWhitelist
-        .mul((maxDepositsWhitelist.sub(weiDepositedWhitelist)))
-        .div(maxDepositsWhitelist);
-
-        // amount of Pika tokens allocated to whitelist sale
-        uint256 pikaForWl = pikaTokensAllocatedWhitelist.sub(unsoldWlPika);
 
         // amount of Pika tokens allocated to public sale
-        uint256 pikaForPublic = pikaTokensAllocated.sub(pikaForWl);
+        uint256 pikaForPublic = pikaTokensAllocated;
 
         // total wei deposited during the public sale
-        uint256 totalDepoPublic = weiDeposited.sub(weiDepositedWhitelist);
+        uint256 totalDepoPublic = weiDeposited;
 
         // the amount of Pika sold in public if it is sold at the whitelist price
-        uint256 pikaSoldPublicAtWhitelistPrice = pikaForWl.mul(totalDepoPublic).div(weiDepositedWhitelist);
+        uint256 pikaSoldPublicAtWhitelistPrice = totalDepoPublic.div(minPrice);
 
         // if the amount is larger than pikaForPublic, it means the actual price in public phase is higher than
         // whitelist price and therefore all the PIKA tokens are sold out.
@@ -225,41 +190,23 @@ contract PikaTokenGenerationPublic is ReentrancyGuard {
     /// View beneficiary's claimable token amount
     /// @param beneficiary address to view claimable token amount of
     function claimAmountPika(address beneficiary) public view returns (uint256) {
-        // wei deposited during whitelist sale by beneficiary
-        uint256 userDepoWl = depositsWhitelist[beneficiary];
-
         // wei deposited during public sale by beneficiary
         uint256 userDepoPub = deposits[beneficiary];
 
-        if (userDepoPub.add(userDepoWl) == 0) {
+        if (userDepoPub == 0) {
             return 0;
         }
 
-        // amount of Pika unsold during whitelist sale
-        uint256 unsoldWlPika = pikaTokensAllocatedWhitelist
-        .mul((maxDepositsWhitelist.sub(weiDepositedWhitelist)))
-        .div(maxDepositsWhitelist);
-
-        // amount of Pika tokens allocated to whitelist sale
-        uint256 pikaForWl = pikaTokensAllocatedWhitelist.sub(unsoldWlPika);
-
         // amount of Pika tokens allocated to public sale
-        uint256 pikaForPublic = pikaTokensAllocated.sub(pikaForWl);
+        uint256 pikaForPublic = pikaTokensAllocated;
 
         // total wei deposited during the public sale
-        uint256 totalDepoPublic = weiDeposited.sub(weiDepositedWhitelist);
+        uint256 totalDepoPublic = weiDeposited;
 
-        uint256 userClaimablePika = 0;
+        uint256 userClaimablePikaPublic = Math.min(pikaForPublic.mul(userDepoPub).div(totalDepoPublic),
+            userDepoPub.div(minPrice));
 
-        if (userDepoWl > 0) {
-            userClaimablePika = pikaForWl.mul(userDepoWl).div(weiDepositedWhitelist);
-        }
-        if (userDepoPub > 0) {
-            uint256 userClaimablePikaPublic = Math.min(pikaForPublic.mul(userDepoPub).div(totalDepoPublic),
-                pikaForWl.mul(userDepoPub).div(weiDepositedWhitelist));
-            userClaimablePika = userClaimablePika.add(userClaimablePikaPublic);
-        }
-        return userClaimablePika;
+        return userClaimablePikaPublic;
     }
 
     /// View leftover depositable eth for whitelisted user
@@ -286,20 +233,12 @@ contract PikaTokenGenerationPublic is ReentrancyGuard {
     }
 
     function getCurrentPikaPrice() external view returns(uint256) {
-        uint256 minPrice = maxDepositsWhitelist.mul(1e18).div(pikaTokensAllocatedWhitelist);
         if (block.timestamp <= saleStart) {
             return minPrice;
         }
-        // amount of Pika unsold during whitelist sale
-        uint256 unsoldWlPika = pikaTokensAllocatedWhitelist
-        .mul((maxDepositsWhitelist.sub(weiDepositedWhitelist)))
-        .div(maxDepositsWhitelist);
-        // amount of Pika tokens allocated to whitelist sale
-        uint256 pikaForWl = pikaTokensAllocatedWhitelist.sub(unsoldWlPika);
-
         // amount of Pika tokens allocated to public sale
-        uint256 pikaForPublic = pikaTokensAllocated.sub(pikaForWl);
-        uint256 priceForPublic = (weiDeposited.sub(weiDepositedWhitelist)).mul(1e18).div(pikaForPublic);
+        uint256 pikaForPublic = pikaTokensAllocated;
+        uint256 priceForPublic = weiDeposited.mul(1e18).div(pikaForPublic);
         return priceForPublic > minPrice ? priceForPublic : minPrice;
     }
 
