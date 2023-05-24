@@ -77,7 +77,7 @@ contract PikaTokenGenerationPublic is ReentrancyGuard {
         require(_owner != address(0), "invalid owner address");
         require(_saleStart <= _sale2Start, "invalid saleStart");
         require(_saleStart >= block.timestamp, "invalid saleStart");
-        require(_saleClose > _saleStart2, "invalid saleClose");
+        require(_saleClose > _sale2Start, "invalid saleClose");
         require(_minPrice > 0, "invalid minPrice");
         require(_maxDepositsTotal > 0, "invalid maxDepositsTotal");
         require(_pikaTokensAllocated > 0, "invalid pikaTokensAllocated");
@@ -149,7 +149,7 @@ contract PikaTokenGenerationPublic is ReentrancyGuard {
     function withdraw() external {
         require(owner == msg.sender, "caller is not the owner");
         uint256 ethBalance = payable(address(this)).balance;
-        (bool success, ) = msg.sender.call.value(ethBalance)("");
+        (bool success, ) = msg.sender.call{value: ethBalance}("");
         require(success, "transfer failed.");
 
         emit WithdrawEth(ethBalance);
