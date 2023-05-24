@@ -165,7 +165,7 @@ contract PikaTokenGenerationPublic is ReentrancyGuard {
         uint256 totalDepoPublic = weiDeposited;
 
         // the amount of Pika sold in public if it is sold at the whitelist price
-        uint256 pikaSoldPublicAtWhitelistPrice = totalDepoPublic.div(minPrice);
+        uint256 pikaSoldPublicAtWhitelistPrice = totalDepoPublic.mul(1e18).div(minPrice);
 
         // if the amount is larger than pikaForPublic, it means the actual price in public phase is higher than
         // whitelist price and therefore all the PIKA tokens are sold out.
@@ -192,7 +192,7 @@ contract PikaTokenGenerationPublic is ReentrancyGuard {
         uint256 totalDepoPublic = weiDeposited;
 
         uint256 userClaimablePikaPublic = Math.min(pikaForPublic.mul(userDepoPub).div(totalDepoPublic),
-            userDepoPub.div(minPrice));
+            userDepoPub.mul(1e18).div(minPrice));
 
         return userClaimablePikaPublic;
     }
