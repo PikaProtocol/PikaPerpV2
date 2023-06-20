@@ -11,7 +11,7 @@ import './IPikaPerp.sol';
 import './IFundingManager.sol';
 import '../staking/IVaultReward.sol';
 
-contract PikaPerpV3 is ReentrancyGuard {
+contract PikaPerpV4 is ReentrancyGuard {
     using SafeERC20 for IERC20;
     using UniERC20 for IERC20;
     // All amounts are stored with 8 decimals
@@ -85,7 +85,7 @@ contract PikaPerpV3 is ReentrancyGuard {
     uint256 public protocolRewardRatio = 2000;  // 20%
     uint256 public pikaRewardRatio = 3000;  // 30%
     uint256 public maxShift = 0.003e8; // max shift (shift is used adjust the price to balance the longs and shorts)
-    uint256 public minProfitTime = 6 hours; // the time window where minProfit is effective
+    uint256 public minProfitTime = 12 hours; // the time window where minProfit is effective
     uint256 public totalWeight; // total exposure weights of all product
     uint256 public exposureMultiplier = 10000; // exposure multiplier
     uint256 public utilizationMultiplier = 10000; // exposure multiplier
@@ -312,12 +312,11 @@ contract PikaPerpV3 is ReentrancyGuard {
         require(isTradeEnabled, "!enabled");
         // Check params
         require(margin >= minMargin && margin < type(uint64).max, "!margin");
-        require(leverage >=  BASE / 2, "!lev");
 
         // Check product
         Product storage product = products[productId];
         require(product.isActive, "!active");
-        require(leverage <= uint256(product.maxLeverage), "!max-lev");
+        require(leverage >=  BASE / 2 && leverage <= uint256(product.maxLeverage), "!lev");
 
         // Transfer margin plus fee
         uint256 tradeFee = IFeeCalculator(feeCalculator).getFee(margin, leverage, product.productToken, uint256(product.fee), user, msg.sender);
@@ -377,22 +376,23 @@ contract PikaPerpV3 is ReentrancyGuard {
         // Check position
         Position storage position = positions[positionId];
         require(msg.sender == position.owner || _validateManager(position.owner), "!allow");
+        Product storage product = products[uint256(position.productId)];
         uint256 newMargin;
         if (shouldIncrease) {
             IERC20(token).uniTransferFromSenderToThis(margin * tokenBase / BASE);
             newMargin = uint256(position.margin) + margin;
         } else {
-            Product storage product = products[uint256(position.productId)];
             int256 fundingPayment = PerpLib._getFundingPayment(fundingManager, position.isLong, position.productId, position.leverage, position.margin, position.funding);
             int256 pnl = PerpLib._getPnl(position.isLong, position.price, position.leverage, position.margin, IOracle(oracle).getPrice(product.productToken)) - fundingPayment;
             require (pnl > 0 || uint256(-1 * pnl) < uint256(position.margin) * liquidationThreshold / (10**4), "liquidatable");
             newMargin = uint256(position.margin) - margin;
+            require(newMargin >= minMargin, "!margin");
             IERC20(token).uniTransfer(msg.sender, margin * tokenBase / BASE);
         }
 
         // New position params
         uint256 newLeverage = uint256(position.leverage) * uint256(position.margin) / newMargin;
-        require(newLeverage >= 1 * BASE, "!low-lev");
+        require(newLeverage >= BASE / 2 && newLeverage <= uint256(product.maxLeverage), "!lev");
 
         position.margin = uint128(newMargin);
         position.leverage = uint64(newLeverage);
@@ -925,7 +925,7 @@ contract PikaPerpV3 is ReentrancyGuard {
     }
 
     function pauseTrading() external {
-        require(msg.sender == guardian, "!guard");
+        require(msg.sender == guardian);
         isTradeEnabled = false;
         canUserStake = false;
     }

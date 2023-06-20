@@ -10,7 +10,7 @@ import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "../oracle/IOracle.sol";
 import '../lib/UniERC20.sol';
 import "./IPikaPerp.sol";
-import "./PikaPerpV3.sol";
+import "./PikaPerpV4.sol";
 import "../access/Governable.sol";
 import "../referrals/IReferralStorage.sol";
 
@@ -379,7 +379,7 @@ contract OrderBook is Governable, ReentrancyGuard {
         uint256 _executionFee
     ) external payable nonReentrant {
         require(_executionFee >= minExecutionFee, "OrderBook: insufficient execution fee");
-        require(msg.sender == _account || _validateManager(_account), "PositionManager: no permission for account");
+        require(msg.sender == _account || _validateManager(_account), "OrderBook: no permission for account");
         uint256 tradeFee = _getTradeFeeRate(_productId, _account) * _margin * _leverage / (feeBase * BASE);
         if (IERC20(collateralToken).isETH()) {
             IERC20(collateralToken).uniTransferFromSenderToThis((_executionFee + _margin + tradeFee) * tokenBase / BASE);
@@ -561,7 +561,7 @@ contract OrderBook is Governable, ReentrancyGuard {
         bool _triggerAboveThreshold
     ) external payable nonReentrant {
         require(msg.value >= minExecutionFee * 1e18 / BASE, "OrderBook: insufficient execution fee");
-        require(msg.sender == _account || _validateManager(_account), "PositionManager: no permission for account");
+        require(msg.sender == _account || _validateManager(_account), "OrderBook: no permission for account");
         _createCloseOrder(
             _account,
             _productId,

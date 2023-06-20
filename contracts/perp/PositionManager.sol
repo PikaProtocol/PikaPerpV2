@@ -9,7 +9,7 @@ import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "./IPikaPerp.sol";
 import '../lib/UniERC20.sol';
 import "./IPikaPerp.sol";
-import "./PikaPerpV3.sol";
+import "./PikaPerpV4.sol";
 import "../access/Governable.sol";
 import "../referrals/IReferralStorage.sol";
 
@@ -764,8 +764,8 @@ contract PositionManager is Governable, ReentrancyGuard {
         );
     }
 
-    function _validateManager(address account) private view returns(bool) {
-        return managers[msg.sender] && approvedManagers[account][msg.sender];
+    function _validateManager(address _account) private view returns(bool) {
+        return managers[msg.sender] && approvedManagers[_account][msg.sender];
     }
 
     function _setTraderReferralCode(bytes32 _referralCode) internal {

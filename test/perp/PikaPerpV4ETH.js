@@ -89,7 +89,7 @@ describe("Trading ETH", () => {
 		feeCalculator = await feeCalculatorContract.deploy(10000);
 		// feeCalculator = await feeCalculatorContract.deploy(40, 9000, oracle.address);
 
-		const tradingContract = await ethers.getContractFactory("PikaPerpV3");
+		const tradingContract = await ethers.getContractFactory("PikaPerpV4");
 		trading = await tradingContract.deploy("0x0000000000000000000000000000000000000000", "1000000000000000000", oracle.address, feeCalculator.address, fundingManager.address);
 
 		await fundingManager.setPikaPerp(trading.address);

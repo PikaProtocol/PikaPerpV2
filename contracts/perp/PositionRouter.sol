@@ -18,7 +18,6 @@ contract PositionRouter {
     address public immutable collateralToken;
     uint256 public immutable tokenBase;
     uint256 public constant BASE = 1e8;
-    uint256 public constant FEE_BASE = 1e4;
 
     constructor(
         address _positionManager,
@@ -30,7 +29,7 @@ contract PositionRouter {
     ) public {
         positionManager = _positionManager;
         orderbook = _orderbook;
-        pikaPerp = _collateralToken;
+        pikaPerp = _pikaPerp;
         feeCalculator = _feeCalculator;
         collateralToken = _collateralToken;
         tokenBase = _tokenBase;
@@ -49,6 +48,7 @@ contract PositionRouter {
     ) external payable {
         uint256 tradeFee = _getTradeFee(_margin, _leverage, _productId, msg.sender);
         IERC20(collateralToken).uniTransferFromSenderToThis((_margin + tradeFee) * tokenBase / BASE);
+        IERC20(collateralToken).approve(positionManager, (_margin + tradeFee) * tokenBase / BASE);
         IPositionManager(positionManager).createOpenPosition{value: _executionFee * 1e18 / BASE}(
             msg.sender,
             _productId,

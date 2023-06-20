@@ -17,7 +17,7 @@ contract FeeCalculator is Governable {
 
     uint256 public constant PRICE_BASE = 10000;
     uint256 public constant BASE = 10 ** 8;
-    uint256 public constant MAX_ACCOUNT_DISCOUNT = 3000; // 30%
+    uint256 public constant MAX_ACCOUNT_DISCOUNT = 7000; // 70%
 
     event SetIsDiscountEnabled(bool isDiscountEnabled);
     event SetDiscountForAccount(address indexed account, uint256 discount);

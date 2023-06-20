@@ -82,7 +82,7 @@ function assertAlmostEqual(actual, expected, accuracy = 10000000) {
 describe("Trading", () => {
 
 	let trading, addrs = [], owner, testManager, oracle, usdc, fundingManager, pika, pikaFeeReward, vaultFeeReward, vaultTokenReward,
-		rewardToken, orderbook, feeCalculator, positionManager, liquidator;
+		rewardToken, orderbook, feeCalculator, positionManager, positionRouter, liquidator;
 
 	before(async () => {
 
@@ -109,7 +109,7 @@ describe("Trading", () => {
 		// feeCalculator = await feeCalculatorContract.deploy(40, 9000, oracle.address);
 		// await feeCalculator.setFeeTier([1000, 10000, 100000, 500000, 1000000, 2500000, 5000000], [0, 500, 1500, 2500, 3500, 4000, 4500, 0])
 
-		const tradingContract = await ethers.getContractFactory("PikaPerpV3");
+		const tradingContract = await ethers.getContractFactory("PikaPerpV4");
 		trading = await tradingContract.deploy(usdc.address, 1000000, oracle.address, feeCalculator.address, fundingManager.address);
 
 		await fundingManager.setPikaPerp(trading.address);
@@ -137,6 +137,10 @@ describe("Trading", () => {
 
 		const positionManagerContract = await ethers.getContractFactory("PositionManager");
 		positionManager = await positionManagerContract.deploy(trading.address, feeCalculator.address, oracle.address, usdc.address, "100000", "1000000");
+
+		const positionRouterContract = await ethers.getContractFactory("PositionRouter");
+		positionRouter = await positionRouterContract.deploy(positionManager.address, orderbook.address, trading.address, feeCalculator.address,
+			usdc.address, "1000000");
 
 		const liquidatorContract = await ethers.getContractFactory("Liquidator");
 		liquidator = await liquidatorContract.deploy(trading.address, usdc.address, oracle.address, fundingManager.address, addrs[2].address);
@@ -939,6 +943,38 @@ describe("Trading", () => {
 			// await orderbook.connect(account2).executeCloseOrder(account1.address, 1, account2.address);
 			// const position2 = await trading.getPosition(account1.address, 1, true);
 			// expect(position2[4]).to.equal("0");
+		})
+
+		it(`positionRouter`, async () => {
+			const account1 = addrs[7]
+			const account2 = addrs[8]
+			const keeper = addrs[9]
+			await usdc.mint(account1.address, 1000000000000);
+			await usdc.mint(account2.address, 1000000000000);
+
+			const amount = "100000000000";
+			const leverage = "200000000";
+			const tradeFee = "200000000"
+			const size = amount;
+			const executionFee = "1000000000000000";
+			await oracle.setPrice(3001e8);
+			await positionManager.connect(owner).setManager(positionRouter.address, true);
+			await orderbook.connect(owner).setManager(positionRouter.address, true);
+			await positionManager.connect(account1).setAccountManager(positionRouter.address, true);
+			await orderbook.connect(account1).setAccountManager(positionRouter.address, true);
+			// await positionManager.connect(owner).setPositionKeeper(keeper.address, true);
+			// let ethAmount = (BigNumber.from(amount).mul(BigNumber.from("10010000000")));
+			await usdc.connect(account1).approve(positionRouter.address, "10000000000000000000000")
+
+			// 1. cancel open order with user account
+			await positionRouter.connect(account1).createOpenMarketOrderWithCloseTriggerOrders(1, amount, leverage, true, "300000000000", "100000", "250000000000", "350000000000", referralCode, {
+				from: account1.address,
+				value: executionFee*3,
+				gasPrice: gasPrice
+			})
+			await positionManager.connect(keeper).executePositionsWithPrices([], 5, 2, account1.address); // 'PositionManager: current price too high'
+			// const openPositionRequest1 = (await positionManager.getOpenPositionRequest(account1.address, 1));
+			// expect(openPositionRequest1.margin.toString()).to.be.equal(amount);
 		})
 	});
 });
