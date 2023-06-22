@@ -200,7 +200,7 @@ contract Vester is Ownable {
             SafeERC20.safeTransfer(
                 IERC20(_token),
                 owner(),
-                IERC20(_token).balanceOf(address(this))
+                _amount
             );
         } else {
             SafeERC20.safeTransfer(
