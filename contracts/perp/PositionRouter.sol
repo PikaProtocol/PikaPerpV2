@@ -1,6 +1,7 @@
 pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import '../lib/UniERC20.sol';
 import "./IPositionManager.sol";
 import "./IOrderBook.sol";
@@ -9,6 +10,7 @@ import "./IFeeCalculator.sol";
 import "../access/Governable.sol";
 
 contract PositionRouter {
+    using SafeERC20 for IERC20;
     using UniERC20 for IERC20;
 
     address public immutable positionManager;
@@ -33,6 +35,7 @@ contract PositionRouter {
         feeCalculator = _feeCalculator;
         collateralToken = _collateralToken;
         tokenBase = _tokenBase;
+        IERC20(_collateralToken).safeApprove(_positionManager, type(uint).max);
     }
 
     function createOpenMarketOrderWithCloseTriggerOrders (
@@ -48,7 +51,6 @@ contract PositionRouter {
     ) external payable {
         uint256 tradeFee = _getTradeFee(_margin, _leverage, _productId, msg.sender);
         IERC20(collateralToken).uniTransferFromSenderToThis((_margin + tradeFee) * tokenBase / BASE);
-        IERC20(collateralToken).approve(positionManager, (_margin + tradeFee) * tokenBase / BASE);
         IPositionManager(positionManager).createOpenPosition{value: _executionFee * 1e18 / BASE}(
             msg.sender,
             _productId,
