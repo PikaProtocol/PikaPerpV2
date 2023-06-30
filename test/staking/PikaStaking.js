@@ -23,12 +23,13 @@ function assertAlmostEqual(actual, expected, accuracy = 100000) {
 
 
 describe("PikaStaking", function () {
-    let pika, esPika, vePika, pikaStaking, pikaFeeReward, pikaTokenReward, testPikaPerp, owner, alice, bob, usdc;
+    let pika, esPika, vePika, pikaStaking, pikaFeeReward, pikaTokenReward, testPikaPerp, owner, alice, bob, treasury, usdc;
     beforeEach(async function () {
         this.wallets = provider.getWallets()
         owner = this.wallets[0]
         alice = this.wallets[1]
         bob = this.wallets[2]
+        treasury = this.wallets[3]
         const pikaContract = await hre.ethers.getContractFactory("Pika")
         const ePikaContract = await hre.ethers.getContractFactory("EsPika")
         const pikaStakingContract = await hre.ethers.getContractFactory("PikaStaking")
@@ -45,7 +46,7 @@ describe("PikaStaking", function () {
         esPika = await ePikaContract.deploy("ePika", "ePIKA", "1000000000000000000000000000", owner.address, owner.address)
         await esPika.connect(owner).grantRole("0x9143236d81225394f3bd65b44e6e29fdf4d7ba0773d9bb3f5cc15eb80ba37777", owner.address)
 
-        pikaStaking = await pikaStakingContract.connect(owner).deploy(pika.address, 86400);
+        pikaStaking = await pikaStakingContract.connect(owner).deploy(pika.address, 86400, treasury.address, "5000000000000000");
 
         vePika = await vePikaContract.deploy(pikaStaking.address)
 
@@ -105,8 +106,9 @@ describe("PikaStaking", function () {
             await provider.send("evm_mine")
             const beforeWithdrawBob = await pika.balanceOf(bob.address)
             await pikaStaking.connect(bob).withdraw("2000000000000000000000");
-            assertAlmostEqual((await pika.balanceOf(bob.address)).sub(beforeWithdrawBob), "2000000000000000000000")
-            
+            assertAlmostEqual((await pika.balanceOf(bob.address)).sub(beforeWithdrawBob), "1990000000000000000000")
+            assertAlmostEqual(await pika.balanceOf(treasury.address), "15000000000000000000")
+
             await pikaTokenReward.connect(alice).getReward()
             assertAlmostEqual(await esPika.balanceOf(alice.address), "400000000000000000000")
 

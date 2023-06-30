@@ -17,8 +17,9 @@ contract PikaStaking is Governable, ReentrancyGuard, Pausable {
 
     address public owner;
     address public stakingToken;
-
     uint256 public stakingPeriod;
+    address public treasury;
+    uint256 public withdrawFee;
     uint256 private _totalSupply;
 
     address[] public rewardPools;
@@ -29,13 +30,17 @@ contract PikaStaking is Governable, ReentrancyGuard, Pausable {
     uint256 public constant PRECISION = 10**18;
     event OwnerSet(address owner);
     event StakingPeriodSet(uint256 stakingPeriodSet);
+    event TreasurySet(address treasury);
+    event WithdrawFeeSet(uint256 withdrawFee);
     event Staked(address indexed user, uint256 amount);
-    event Withdrawn(address indexed user, uint256 amount);
+    event Withdrawn(address indexed user, uint256 fee, uint256 amount);
 
-    constructor(address _stakingToken, uint256 _stakingPeriod) {
+    constructor(address _stakingToken, uint256 _stakingPeriod, address _treasury, uint256 _withdrawFee) {
         owner = msg.sender;
         stakingToken = _stakingToken;
         stakingPeriod = _stakingPeriod;
+        treasury = _treasury;
+        withdrawFee = _withdrawFee;
     }
 
     // Views methods
@@ -58,6 +63,17 @@ contract PikaStaking is Governable, ReentrancyGuard, Pausable {
     function setStakingPeriod(uint256 _stakingPeriod) external onlyOwner {
         stakingPeriod = _stakingPeriod;
         emit StakingPeriodSet(stakingPeriod);
+    }
+
+    function setTreasury(address _treasury) external onlyOwner {
+        treasury = _treasury;
+        emit TreasurySet(treasury);
+    }
+
+    function setWithdrawFee(uint256 _withdrawFee) external onlyOwner {
+        require(_withdrawFee <= 2e16, "too high"); // withdraw fee can never be more than 2%
+        withdrawFee = _withdrawFee;
+        emit WithdrawFeeSet(_withdrawFee);
     }
 
     function setRewardPools(address[] memory _rewardPools) external onlyOwner {
@@ -84,8 +100,10 @@ contract PikaStaking is Governable, ReentrancyGuard, Pausable {
         stakeTimestamp[msg.sender] = 0;
         _totalSupply -= amount;
         _balances[msg.sender] -= amount;
-        IERC20(stakingToken).safeTransfer(msg.sender, amount);
-        emit Withdrawn(msg.sender, amount);
+        uint256 fee = amount * withdrawFee / PRECISION;
+        IERC20(stakingToken).safeTransfer(treasury, fee);
+        IERC20(stakingToken).safeTransfer(msg.sender, amount - fee);
+        emit Withdrawn(msg.sender, fee, amount - fee);
     }
 
     function withdrawAll() external {
