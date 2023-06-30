@@ -57,17 +57,17 @@ contract PikaStaking is Governable, ReentrancyGuard, Pausable {
 
     function setOwner(address _owner) external onlyGov {
         owner = _owner;
-        emit OwnerSet(owner);
+        emit OwnerSet(_owner);
     }
 
     function setStakingPeriod(uint256 _stakingPeriod) external onlyOwner {
         stakingPeriod = _stakingPeriod;
-        emit StakingPeriodSet(stakingPeriod);
+        emit StakingPeriodSet(_stakingPeriod);
     }
 
     function setTreasury(address _treasury) external onlyOwner {
         treasury = _treasury;
-        emit TreasurySet(treasury);
+        emit TreasurySet(_treasury);
     }
 
     function setWithdrawFee(uint256 _withdrawFee) external onlyOwner {
