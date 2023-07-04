@@ -59,6 +59,7 @@ contract OrderBook is Governable, ReentrancyGuard {
     address public feeCalculator;
     address public referralStorage;
     uint256 public minExecutionFee;
+    uint256 public minTimeExecuteDelay;
     uint256 public minTimeCancelDelay;
     uint256 public feeBase;
     bool public allowPublicKeeper = false;
@@ -212,6 +213,11 @@ contract OrderBook is Governable, ReentrancyGuard {
     function setMinExecutionFee(uint256 _minExecutionFee) external onlyAdmin {
         minExecutionFee = _minExecutionFee;
         emit UpdateMinExecutionFee(_minExecutionFee);
+    }
+
+    function setMinTimeExecuteDelay(uint256 _minTimeExecuteDelay) external onlyAdmin {
+        minTimeExecuteDelay = _minTimeExecuteDelay;
+        emit UpdateMinTimeExecuteDelay(_minTimeExecuteDelay);
     }
 
     function setMinTimeCancelDelay(uint256 _minTimeCancelDelay) external onlyAdmin {
@@ -504,10 +510,21 @@ contract OrderBook is Governable, ReentrancyGuard {
         );
     }
 
+    function executeOpenOrderWithPrices(
+        bytes[] calldata _priceUpdateData,
+        address _address,
+        uint256 _orderIndex,
+        address payable _feeReceiver
+    ) external payable {
+        IOracle(oracle).setPrices{value: msg.value}(msg.sender, _priceUpdateData);
+        executeOpenOrder(_address, _orderIndex, _feeReceiver);
+    }
+
     function executeOpenOrder(address _address, uint256 _orderIndex, address payable _feeReceiver) public nonReentrant {
         OpenOrder memory order = openOrders[_address][_orderIndex];
         require(order.account != address(0), "OrderBook: non-existent order");
-        require(msg.sender == address(this), "OrderBook: not calling from this contract");
+        require((msg.sender == address(this) || isKeeper[msg.sender] || allowPublicKeeper) && order.orderTimestamp + minTimeExecuteDelay < block.timestamp,
+            "OrderBook: min time execute delay not yet passed");
         (uint256 currentPrice, ) = validatePositionOrderPrice(
             order.isLong,
             order.triggerAboveThreshold,
@@ -607,10 +624,21 @@ contract OrderBook is Governable, ReentrancyGuard {
         );
     }
 
+    function executeCloseOrderWithPrices(
+        bytes[] calldata _priceUpdateData,
+        address _address,
+        uint256 _orderIndex,
+        address payable _feeReceiver
+    ) external payable {
+        IOracle(oracle).setPrices{value: msg.value}(msg.sender, _priceUpdateData);
+        executeCloseOrder(_address, _orderIndex, _feeReceiver);
+    }
+
     function executeCloseOrder(address _address, uint256 _orderIndex, address payable _feeReceiver) public nonReentrant {
         CloseOrder memory order = closeOrders[_address][_orderIndex];
         require(order.account != address(0), "OrderBook: non-existent order");
-        require(msg.sender == address(this), "OrderBook: not calling from this contract");
+        require((msg.sender == address(this) || isKeeper[msg.sender] || allowPublicKeeper) && order.orderTimestamp + minTimeExecuteDelay < block.timestamp,
+            "OrderBook: min time execute delay not yet passed");
         (,uint256 leverage,,,,,,,) = IPikaPerp(pikaPerp).getPosition(_address, order.productId, order.isLong);
         (uint256 currentPrice, ) = validatePositionOrderPrice(
             !order.isLong,

@@ -81,15 +81,15 @@ contract VaultFeeReward is Governable, ReentrancyGuard, Pausable {
         previousRewardPerToken[account] = cumulativeRewardPerTokenStored;
     }
 
-    function claimReward() public returns(uint256 rewardToSend) {
-        updateReward(msg.sender);
-        rewardToSend = claimableReward[msg.sender];
-        claimableReward[msg.sender] = 0;
+    function claimReward(address user) public returns(uint256 rewardToSend) {
+        updateReward(user);
+        rewardToSend = claimableReward[user];
+        claimableReward[user] = 0;
 
         if (rewardToSend > 0) {
-            _transferOut(msg.sender, rewardToSend);
+            _transferOut(user, rewardToSend);
             emit ClaimedReward(
-                msg.sender,
+                user,
                 rewardToken,
                 rewardToSend
             );
