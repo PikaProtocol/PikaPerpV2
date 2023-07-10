@@ -75,14 +75,14 @@ contract PikaFeeReward is Governable, ReentrancyGuard, Pausable {
         previousRewardPerToken[account] = cumulativeRewardPerTokenStored;
     }
 
-    function claimReward() external {
-        updateReward(msg.sender);
-        uint256 rewardToSend = claimableReward[msg.sender];
-        claimableReward[msg.sender] = 0;
+    function claimReward(address user) external {
+        updateReward(user);
+        uint256 rewardToSend = claimableReward[user];
+        claimableReward[user] = 0;
         if (rewardToSend > 0) {
-            _transferOut(msg.sender, rewardToSend);
+            _transferOut(user, rewardToSend);
             emit ClaimedReward(
-                msg.sender,
+                user,
                 rewardToken,
                 rewardToSend
             );
