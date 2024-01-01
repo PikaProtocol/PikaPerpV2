@@ -12,6 +12,7 @@ import "./IPikaPerp.sol";
 import "./PikaPerpV4.sol";
 import "../access/Governable.sol";
 import "../referrals/IReferralStorage.sol";
+import "./IUserMapping.sol";
 
 contract PositionManager is Governable, ReentrancyGuard {
     using SafeMath for uint256;
@@ -51,8 +52,11 @@ contract PositionManager is Governable, ReentrancyGuard {
     address public feeCalculator;
     address public oracle;
     address public referralStorage;
+    address public fundingManager;
     address public immutable collateralToken;
+    address public immutable userMapping;
     uint256 public minExecutionFee;
+    uint256 public liquidationThreshold;
 
     uint256 public minBlockDelayKeeper;
     uint256 public minTimeExecuteDelayPublic;
@@ -81,7 +85,6 @@ contract PositionManager is Governable, ReentrancyGuard {
     mapping (address => uint256) public closePositionsIndex;
     mapping (bytes32 => ClosePositionRequest) public closePositionRequests;
 
-    mapping (address => bool) public managers;
     mapping (address => mapping (address => bool)) public approvedManagers;
 
     event CreateOpenPosition(
@@ -169,6 +172,7 @@ contract PositionManager is Governable, ReentrancyGuard {
     event ExecuteClosePositionError(address indexed account, uint256 index, string executionError);
     event SetPositionKeeper(address indexed account, bool isActive);
     event SetMinExecutionFee(uint256 minExecutionFee);
+    event SetLiquidationThreshold(uint256 liquidationThreshold);
     event SetIsUserExecuteEnabled(bool isUserExecuteEnabled);
     event SetIsUserCancelEnabled(bool isUserCancelEnabled);
     event SetDelayValues(uint256 minBlockDelayKeeper, uint256 minTimeExecuteDelayPublic,
@@ -191,14 +195,20 @@ contract PositionManager is Governable, ReentrancyGuard {
         address _feeCalculator,
         address _oracle,
         address _collateralToken,
+        address _userMapping,
+        address _fundingManager,
         uint256 _minExecutionFee,
+        uint256 _liquidationThreshold,
         uint256 _tokenBase
     ) public {
         pikaPerp = _pikaPerp;
         feeCalculator = _feeCalculator;
         oracle = _oracle;
         collateralToken = _collateralToken;
+        userMapping = _userMapping;
+        fundingManager = _fundingManager;
         minExecutionFee = _minExecutionFee;
+        liquidationThreshold = _liquidationThreshold;
         tokenBase = _tokenBase;
         admin = msg.sender;
     }
@@ -209,6 +219,10 @@ contract PositionManager is Governable, ReentrancyGuard {
 
     function setOracle(address _oracle) external onlyAdmin {
         oracle = _oracle;
+    }
+
+    function setFundingManger(address _fundingManager) external onlyAdmin {
+        fundingManager = _fundingManager;
     }
 
     function setPositionKeeper(address _account, bool _isActive) external onlyAdmin {
@@ -229,6 +243,11 @@ contract PositionManager is Governable, ReentrancyGuard {
     function setIsUserCancelEnabled(bool _isUserCancelEnabled) external onlyAdmin {
         isUserCancelEnabled = _isUserCancelEnabled;
         emit SetIsUserCancelEnabled(_isUserCancelEnabled);
+    }
+
+    function setLiquidationThreshold(uint256 _liquidationThreshold) external onlyAdmin {
+        liquidationThreshold = _liquidationThreshold;
+        emit SetLiquidationThreshold(_liquidationThreshold);
     }
 
     function setDelayValues(
@@ -259,12 +278,6 @@ contract PositionManager is Governable, ReentrancyGuard {
     function setAllowUserCloseOnly(bool _allowUserCloseOnly) external onlyAdmin {
         allowUserCloseOnly = _allowUserCloseOnly;
         emit SetAllowUserCloseOnly(_allowUserCloseOnly);
-    }
-
-
-    function setManager(address _manager, bool _isActive) external onlyAdmin {
-        managers[_manager] = _isActive;
-        emit SetManager(_manager, _isActive);
     }
 
     function setAccountManager(address _manager, bool _isActive) external {
@@ -393,7 +406,7 @@ contract PositionManager is Governable, ReentrancyGuard {
     }
 
     function createOpenPosition(
-        address _account,
+        address _user,
         uint256 _productId,
         uint256 _margin,
         uint256 _leverage,
@@ -403,7 +416,9 @@ contract PositionManager is Governable, ReentrancyGuard {
         bytes32 _referralCode
     ) external payable nonReentrant {
         require(_executionFee >= minExecutionFee, "PositionManager: invalid executionFee");
-        require(msg.sender == _account || _validateManager(_account), "PositionManager: no permission for account");
+        require(msg.sender == _user || _validateManager(_user), "PositionManager: no permission for account");
+        address _account = IUserMapping(userMapping).getOrCreateProxy(_user, address(this));
+
         uint256 tradeFee = _getTradeFee(_margin, _leverage, _productId, _account);
         if (IERC20(collateralToken).isETH()) {
             IERC20(collateralToken).uniTransferFromSenderToThis((_executionFee + _margin + tradeFee) * tokenBase / BASE);
@@ -427,7 +442,7 @@ contract PositionManager is Governable, ReentrancyGuard {
     }
 
     function createClosePosition(
-        address _account,
+        address _user,
         uint256 _productId,
         uint256 _margin,
         bool _isLong,
@@ -436,7 +451,8 @@ contract PositionManager is Governable, ReentrancyGuard {
     ) external payable nonReentrant {
         require(_executionFee >= minExecutionFee, "PositionManager: invalid executionFee");
         require(msg.value == _executionFee * 1e18 / BASE, "PositionManager: invalid msg.value");
-        require(msg.sender == _account || _validateManager(_account), "PositionManager: no permission for account");
+        require(msg.sender == _user || _validateManager(_user), "PositionManager: no permission for account");
+        address _account = IUserMapping(userMapping).getProxyFromUser(_user);
         _createClosePosition(
             _account,
             _productId,
@@ -514,11 +530,13 @@ contract PositionManager is Governable, ReentrancyGuard {
 
         delete openPositionRequests[_key];
 
+        address user = IUserMapping(userMapping).getUserFromProxy(request.account);
+
         if (IERC20(collateralToken).isETH()) {
-            IERC20(collateralToken).uniTransfer(request.account, (request.margin + request.tradeFee) * tokenBase / BASE);
+            IERC20(collateralToken).uniTransfer(user, (request.margin + request.tradeFee) * tokenBase / BASE);
             IERC20(collateralToken).uniTransfer(_executionFeeReceiver, request.executionFee * tokenBase / BASE);
         } else {
-            IERC20(collateralToken).uniTransfer(request.account, (request.margin + request.tradeFee) * tokenBase / BASE);
+            IERC20(collateralToken).uniTransfer(user, (request.margin + request.tradeFee) * tokenBase / BASE);
             payable(_executionFeeReceiver).sendValue(request.executionFee * 1e18 / BASE);
         }
 
@@ -604,6 +622,30 @@ contract PositionManager is Governable, ReentrancyGuard {
         return true;
     }
 
+    function modifyMargin(uint256 _margin, uint256 _productId, bool _isLong, bool _shouldIncrease) external payable {
+        address account = IUserMapping(userMapping).getProxyFromUser(msg.sender);
+        (,uint256 leverage,uint256 price,,uint256 margin,,,,int256 funding) = IPikaPerp(pikaPerp).getPosition(
+            account, _productId, _isLong);
+        (address productToken,,,,,,,,) = IPikaPerp(pikaPerp).getProduct(_productId);
+        int256 pnl = PerpLib._getPnl(_isLong, price, leverage, margin, IOracle(oracle).getPrice(productToken)) -
+            PerpLib._getFundingPayment(fundingManager, _isLong, _productId, leverage, margin, funding);
+        require (pnl > 0 || uint256(-1 * pnl) < uint256(margin) * liquidationThreshold / (10**4), "liquidatable");
+        if (_shouldIncrease) {
+            IERC20(collateralToken).uniTransferFromSenderToThis(_margin * tokenBase / BASE);
+        }
+        uint256 positionId = uint256(keccak256(abi.encodePacked(account, _productId, _isLong)));
+        if (IERC20(collateralToken).isETH()) {
+            IPikaPerp(pikaPerp).modifyMargin{value: _margin * tokenBase / BASE }(positionId, _margin, _shouldIncrease);
+        } else {
+            IERC20(collateralToken).safeApprove(pikaPerp, 0);
+            IERC20(collateralToken).safeApprove(pikaPerp, _margin * tokenBase / BASE);
+            IPikaPerp(pikaPerp).modifyMargin(positionId, _margin, _shouldIncrease);
+        }
+        if (!_shouldIncrease) {
+            IERC20(collateralToken).uniTransfer(msg.sender, _margin * tokenBase / BASE);
+        }
+    }
+
     function getRequestKey(address _account, uint256 _index) public pure returns (bytes32) {
         return keccak256(abi.encodePacked(_account, _index));
     }
@@ -651,7 +693,8 @@ contract PositionManager is Governable, ReentrancyGuard {
             }
             return _positionBlockNumber.add(minBlockDelayKeeper) <= block.number;
         }
-        require((!_isOpen || !allowUserCloseOnly) && msg.sender == _account, "PositionManager: forbidden");
+        address user = IUserMapping(userMapping).getUserFromProxy(_account);
+        require((!_isOpen || !allowUserCloseOnly) && msg.sender == user, "PositionManager: forbidden");
         require(_positionBlockTime.add(minTimeExecuteDelayPublic) <= block.timestamp, "PositionManager: min delay not yet passed for execution");
 
         return true;
@@ -668,7 +711,7 @@ contract PositionManager is Governable, ReentrancyGuard {
             return _positionBlockNumber.add(minBlockDelayKeeper) <= block.number;
         }
 
-        require(msg.sender == _account, "PositionManager: forbidden");
+        require(msg.sender == IUserMapping(userMapping).getUserFromProxy(_account), "PositionManager: forbidden");
 
         require(_positionBlockTime.add(minTimeCancelDelayPublic) <= block.timestamp, "PositionManager: min delay not yet passed for cancellation");
 
@@ -765,7 +808,7 @@ contract PositionManager is Governable, ReentrancyGuard {
     }
 
     function _validateManager(address _account) private view returns(bool) {
-        return managers[msg.sender] && approvedManagers[_account][msg.sender];
+        return approvedManagers[_account][msg.sender];
     }
 
     function _setTraderReferralCode(bytes32 _referralCode) internal {

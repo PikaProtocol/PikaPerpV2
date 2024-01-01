@@ -44,4 +44,6 @@ interface IPikaPerp {
     function getMaxExposure(uint256 productWeight) external view returns(uint256);
     function getCumulativeFunding(uint256 _productId) external view returns(uint256);
     function liquidationThreshold() external view returns(uint256);
+    function modifyMargin(uint256 _positionId, uint256 _margin, bool _shouldIncrease) external payable;
+    function setAccountManager(address _manager, bool _isActive) external;
 }

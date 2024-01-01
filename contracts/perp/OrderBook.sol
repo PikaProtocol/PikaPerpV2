@@ -13,6 +13,7 @@ import "./IPikaPerp.sol";
 import "./PikaPerpV4.sol";
 import "../access/Governable.sol";
 import "../referrals/IReferralStorage.sol";
+import "./IUserMapping.sol";
 
 contract OrderBook is Governable, ReentrancyGuard {
     using SafeMath for uint256;
@@ -48,7 +49,6 @@ contract OrderBook is Governable, ReentrancyGuard {
     mapping (address => mapping(uint256 => CloseOrder)) public closeOrders;
     mapping (address => uint256) public closeOrdersIndex;
     mapping (address => bool) public isKeeper;
-    mapping (address => bool) public managers;
     mapping (address => mapping (address => bool)) public approvedManagers;
 
     address public immutable pikaPerp;
@@ -58,6 +58,7 @@ contract OrderBook is Governable, ReentrancyGuard {
     address public oracle;
     address public feeCalculator;
     address public referralStorage;
+    address public immutable userMapping;
     uint256 public minExecutionFee;
     uint256 public minTimeExecuteDelay;
     uint256 public minTimeCancelDelay;
@@ -190,7 +191,8 @@ contract OrderBook is Governable, ReentrancyGuard {
         uint256 _tokenBase,
         uint256 _minExecutionFee,
         address _feeCalculator,
-        uint256 _feeBase
+        uint256 _feeBase,
+        address _userMapping
     ) public {
         admin = msg.sender;
         pikaPerp = _pikaPerp;
@@ -200,6 +202,7 @@ contract OrderBook is Governable, ReentrancyGuard {
         minExecutionFee = _minExecutionFee;
         feeCalculator = _feeCalculator;
         feeBase = _feeBase;
+        userMapping = _userMapping;
     }
 
     function setOracle(address _oracle) external onlyAdmin {
@@ -229,11 +232,6 @@ contract OrderBook is Governable, ReentrancyGuard {
         require(_feeBase >= 10000, "too small");
         feeBase = _feeBase;
         emit UpdateFeeBase(_feeBase);
-    }
-
-    function setManager(address _manager, bool _isActive) external onlyAdmin {
-        managers[_manager] = _isActive;
-        emit SetManager(_manager, _isActive);
     }
 
     function setAccountManager(address _manager, bool _isActive) external {
@@ -375,7 +373,7 @@ contract OrderBook is Governable, ReentrancyGuard {
     }
 
     function createOpenOrder(
-        address _account,
+        address _user,
         uint256 _productId,
         uint256 _margin,
         uint256 _leverage,
@@ -385,7 +383,8 @@ contract OrderBook is Governable, ReentrancyGuard {
         uint256 _executionFee
     ) external payable nonReentrant {
         require(_executionFee >= minExecutionFee, "OrderBook: insufficient execution fee");
-        require(msg.sender == _account || _validateManager(_account), "OrderBook: no permission for account");
+        require(msg.sender == _user || _validateManager(_user), "OrderBook: no permission for account");
+        address _account = IUserMapping(userMapping).getOrCreateProxy(_user, address(this));
         uint256 tradeFee = _getTradeFeeRate(_productId, _account) * _margin * _leverage / (feeBase * BASE);
         if (IERC20(collateralToken).isETH()) {
             IERC20(collateralToken).uniTransferFromSenderToThis((_executionFee + _margin + tradeFee) * tokenBase / BASE);
@@ -454,7 +453,8 @@ contract OrderBook is Governable, ReentrancyGuard {
         uint256 _triggerPrice,
         bool _triggerAboveThreshold
     ) external nonReentrant {
-        OpenOrder storage order = openOrders[msg.sender][_orderIndex];
+        address _account = IUserMapping(userMapping).getProxyFromUser(msg.sender);
+        OpenOrder storage order = openOrders[_account][_orderIndex];
         require(order.account != address(0), "OrderBook: non-existent order");
         if (order.leverage != _leverage) {
             uint256 margin = (order.margin + order.tradeFee) * BASE / (BASE + _getTradeFeeRate(order.productId, order.account) * _leverage / feeBase);
@@ -468,7 +468,7 @@ contract OrderBook is Governable, ReentrancyGuard {
         order.orderTimestamp = block.timestamp;
 
         emit UpdateOpenOrder(
-            msg.sender,
+            _account,
             _orderIndex,
             order.productId,
             order.margin,
@@ -482,11 +482,12 @@ contract OrderBook is Governable, ReentrancyGuard {
     }
 
     function cancelOpenOrder(uint256 _orderIndex) public nonReentrant {
-        OpenOrder memory order = openOrders[msg.sender][_orderIndex];
+        address _account = IUserMapping(userMapping).getProxyFromUser(msg.sender);
+        OpenOrder memory order = openOrders[_account][_orderIndex];
         require(order.account != address(0), "OrderBook: non-existent order");
         require(order.orderTimestamp + minTimeCancelDelay < block.timestamp, "OrderBook: min time cancel delay not yet passed");
 
-        delete openOrders[msg.sender][_orderIndex];
+        delete openOrders[_account][_orderIndex];
 
         if (IERC20(collateralToken).isETH()) {
             IERC20(collateralToken).uniTransfer(msg.sender, (order.executionFee + order.margin + order.tradeFee) * tokenBase / BASE);
@@ -570,7 +571,7 @@ contract OrderBook is Governable, ReentrancyGuard {
     }
 
     function createCloseOrder(
-        address _account,
+        address _user,
         uint256 _productId,
         uint256 _size,
         bool _isLong,
@@ -578,7 +579,8 @@ contract OrderBook is Governable, ReentrancyGuard {
         bool _triggerAboveThreshold
     ) external payable nonReentrant {
         require(msg.value >= minExecutionFee * 1e18 / BASE, "OrderBook: insufficient execution fee");
-        require(msg.sender == _account || _validateManager(_account), "OrderBook: no permission for account");
+        require(msg.sender == _user || _validateManager(_user), "OrderBook: no permission for account");
+        address _account = IUserMapping(userMapping).getProxyFromUser(_user);
         _createCloseOrder(
             _account,
             _productId,
@@ -675,16 +677,17 @@ contract OrderBook is Governable, ReentrancyGuard {
         );
     }
 
-    function cancelCloseOrder(address _account, uint256 _orderIndex) public nonReentrant {
+    function cancelCloseOrder(address _user, uint256 _orderIndex) public nonReentrant {
+        address _account = IUserMapping(userMapping).getProxyFromUser(_user);
         CloseOrder memory order = closeOrders[_account][_orderIndex];
         require(order.account != address(0), "OrderBook: non-existent order");
         // close order can be cancelled by the order owner anytime, or by anyone if there's no active position for the order owner
-        require(msg.sender == _account || !_validatePosition(_account, order.productId, order.isLong), "PositionManager: no permission for account");
+        require(msg.sender == _user || !_validatePosition(_account, order.productId, order.isLong), "PositionManager: no permission for account");
         require(order.orderTimestamp + minTimeCancelDelay < block.timestamp, "OrderBook: min time cancel delay not yet passed");
 
         delete closeOrders[_account][_orderIndex];
 
-        payable(_account).sendValue(order.executionFee * 1e18 / BASE);
+        payable(_user).sendValue(order.executionFee * 1e18 / BASE);
 
         emit CancelCloseOrder(
             order.account,
@@ -705,7 +708,8 @@ contract OrderBook is Governable, ReentrancyGuard {
         uint256 _triggerPrice,
         bool _triggerAboveThreshold
     ) external nonReentrant {
-        CloseOrder storage order = closeOrders[msg.sender][_orderIndex];
+        address _account = IUserMapping(userMapping).getProxyFromUser(msg.sender);
+        CloseOrder storage order = closeOrders[_account][_orderIndex];
         require(order.account != address(0), "OrderBook: non-existent order");
 
         order.size = _size;
@@ -714,7 +718,7 @@ contract OrderBook is Governable, ReentrancyGuard {
         order.orderTimestamp = block.timestamp;
 
         emit UpdateCloseOrder(
-            msg.sender,
+            _account,
             _orderIndex,
             order.productId,
             _size,
@@ -731,7 +735,7 @@ contract OrderBook is Governable, ReentrancyGuard {
     }
 
     function _validateManager(address _account) private view returns(bool) {
-        return managers[msg.sender] && approvedManagers[_account][msg.sender];
+        return approvedManagers[_account][msg.sender];
     }
 
     function _validatePosition(address _account, uint256 _productId, bool _isLong) private view returns(bool) {
