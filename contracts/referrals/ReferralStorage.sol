@@ -4,6 +4,7 @@ pragma solidity ^0.8.0;
 
 import "../access/Governable.sol";
 import "./IReferralStorage.sol";
+import "../perp/IUserMapping.sol";
 
 // forked from https://github.com/gmx-io/gmx-contracts/blob/master/contracts/referrals/ReferralStorage.sol
 contract ReferralStorage is Governable, IReferralStorage {
@@ -14,6 +15,8 @@ contract ReferralStorage is Governable, IReferralStorage {
     }
 
     uint256 public constant BASIS_POINTS = 10000;
+
+    address public userMapping;
 
     mapping (address => uint256) public override referrerDiscountShares; // to override default value in tier
     mapping (address => uint256) public override referrerTiers; // link between user <> tier
@@ -32,6 +35,10 @@ contract ReferralStorage is Governable, IReferralStorage {
     event RegisterCode(address account, bytes32 code);
     event SetCodeOwner(address account, address newAccount, bytes32 code);
     event GovSetCodeOwner(bytes32 code, address newAccount);
+
+    constructor(address _userMapping) public {
+        userMapping = _userMapping;
+    }
 
     modifier onlyHandler() {
         require(isHandler[msg.sender], "ReferralStorage: forbidden");
@@ -109,7 +116,8 @@ contract ReferralStorage is Governable, IReferralStorage {
     }
 
     function _setTraderReferralCode(address _account, bytes32 _code) private {
-        traderReferralCodes[_account] = _code;
-        emit SetTraderReferralCode(_account, _code);
+        address _proxyAccount = IUserMapping(userMapping).getOrCreateProxy(_account, address(0));
+        traderReferralCodes[_proxyAccount] = _code;
+        emit SetTraderReferralCode(_proxyAccount, _code);
     }
 }

@@ -630,18 +630,23 @@ contract PositionManager is Governable, ReentrancyGuard {
         int256 pnl = PerpLib._getPnl(_isLong, price, leverage, margin, IOracle(oracle).getPrice(productToken)) -
             PerpLib._getFundingPayment(fundingManager, _isLong, _productId, leverage, margin, funding);
         require (pnl > 0 || uint256(-1 * pnl) < uint256(margin) * liquidationThreshold / (10**4), "liquidatable");
+
+        uint256 positionId = uint256(keccak256(abi.encodePacked(account, _productId, _isLong)));
         if (_shouldIncrease) {
             IERC20(collateralToken).uniTransferFromSenderToThis(_margin * tokenBase / BASE);
-        }
-        uint256 positionId = uint256(keccak256(abi.encodePacked(account, _productId, _isLong)));
-        if (IERC20(collateralToken).isETH()) {
-            IPikaPerp(pikaPerp).modifyMargin{value: _margin * tokenBase / BASE }(positionId, _margin, _shouldIncrease);
+            if (IERC20(collateralToken).isETH()) {
+                IPikaPerp(pikaPerp).modifyMargin{value: _margin * tokenBase / BASE }(positionId, _margin, _shouldIncrease);
+            } else {
+                IERC20(collateralToken).safeApprove(pikaPerp, 0);
+                IERC20(collateralToken).safeApprove(pikaPerp, _margin * tokenBase / BASE);
+                IPikaPerp(pikaPerp).modifyMargin(positionId, _margin, _shouldIncrease);
+            }
         } else {
-            IERC20(collateralToken).safeApprove(pikaPerp, 0);
-            IERC20(collateralToken).safeApprove(pikaPerp, _margin * tokenBase / BASE);
-            IPikaPerp(pikaPerp).modifyMargin(positionId, _margin, _shouldIncrease);
-        }
-        if (!_shouldIncrease) {
+            if (IERC20(collateralToken).isETH()) {
+                IPikaPerp(pikaPerp).modifyMargin(positionId, _margin, _shouldIncrease);
+            } else {
+                IPikaPerp(pikaPerp).modifyMargin(positionId, _margin, _shouldIncrease);
+            }
             IERC20(collateralToken).uniTransfer(msg.sender, _margin * tokenBase / BASE);
         }
     }
