@@ -14,7 +14,7 @@ import "../access/Governable.sol";
 import "../referrals/IReferralStorage.sol";
 import "./IUserMapping.sol";
 
-contract PositionManager is Governable, ReentrancyGuard {
+contract PositionManagerV4 is Governable, ReentrancyGuard {
     using SafeMath for uint256;
     using SafeERC20 for IERC20;
     using UniERC20 for IERC20;
