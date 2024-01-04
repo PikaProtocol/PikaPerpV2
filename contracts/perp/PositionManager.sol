@@ -629,7 +629,6 @@ contract PositionManager is Governable, ReentrancyGuard {
         (address productToken,,,,,,,,) = IPikaPerp(pikaPerp).getProduct(_productId);
         int256 pnl = PerpLib._getPnl(_isLong, price, leverage, margin, IOracle(oracle).getPrice(productToken)) -
             PerpLib._getFundingPayment(fundingManager, _isLong, _productId, leverage, margin, funding);
-        require (pnl > 0 || uint256(-1 * pnl) < uint256(margin) * liquidationThreshold / (10**4), "liquidatable");
 
         uint256 positionId = uint256(keccak256(abi.encodePacked(account, _productId, _isLong)));
         if (_shouldIncrease) {
@@ -642,6 +641,7 @@ contract PositionManager is Governable, ReentrancyGuard {
                 IPikaPerp(pikaPerp).modifyMargin(positionId, _margin, _shouldIncrease);
             }
         } else {
+            require (pnl > 0 || uint256(-1 * pnl) < (margin - _margin) * liquidationThreshold / (10**4), "liquidatable");
             if (IERC20(collateralToken).isETH()) {
                 IPikaPerp(pikaPerp).modifyMargin(positionId, _margin, _shouldIncrease);
             } else {
