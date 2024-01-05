@@ -1,8 +1,12 @@
 pragma solidity ^0.8.0;
 
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "./IPikaPerp.sol";
 
 contract UserProxy {
+
+    using SafeERC20 for IERC20;
 
     address public immutable pikaPerp;
     address public immutable user;
@@ -17,4 +21,7 @@ contract UserProxy {
         require(msg.sender == user, "!user");
         IPikaPerp(pikaPerp).setAccountManager(_manager, _isActive);
     }
+
+    function withdraw(address _token) external {
+        IERC20(_token).safeTransfer(user, IERC20(_token).balanceOf(address(this)));}
 }

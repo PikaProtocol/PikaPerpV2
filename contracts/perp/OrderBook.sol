@@ -14,8 +14,9 @@ import "./PikaPerpV4.sol";
 import "../access/Governable.sol";
 import "../referrals/IReferralStorage.sol";
 import "./IUserMapping.sol";
+import "./IUserProxy.sol";
 
-contract OrderBookV4 is Governable, ReentrancyGuard {
+contract OrderBook is Governable, ReentrancyGuard {
     using SafeMath for uint256;
     using SafeERC20 for IERC20;
     using UniERC20 for IERC20;
@@ -651,6 +652,7 @@ contract OrderBookV4 is Governable, ReentrancyGuard {
 
         delete closeOrders[_address][_orderIndex];
         IPikaPerp(pikaPerp).closePosition(_address, order.productId, order.size * BASE / leverage , order.isLong, currentPrice);
+        IUserProxy(_address).withdraw(collateralToken);
 
         // pay executor
         _feeReceiver.sendValue(order.executionFee * 1e18 / BASE);

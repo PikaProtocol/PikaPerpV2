@@ -13,8 +13,9 @@ import "./PikaPerpV4.sol";
 import "../access/Governable.sol";
 import "../referrals/IReferralStorage.sol";
 import "./IUserMapping.sol";
+import "./IUserProxy.sol";
 
-contract PositionManagerV4 is Governable, ReentrancyGuard {
+contract PositionManager is Governable, ReentrancyGuard {
     using SafeMath for uint256;
     using SafeERC20 for IERC20;
     using UniERC20 for IERC20;
@@ -569,6 +570,7 @@ contract PositionManagerV4 is Governable, ReentrancyGuard {
         delete closePositionRequests[_key];
 
         IPikaPerp(pikaPerp).closePosition(request.account, request.productId, request.margin , request.isLong, oraclePrice);
+        IUserProxy(request.account).withdraw(collateralToken);
 
         _executionFeeReceiver.sendValue(request.executionFee * 1e18 / BASE);
 

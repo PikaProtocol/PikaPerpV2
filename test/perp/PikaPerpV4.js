@@ -115,7 +115,7 @@ describe("Trading", () => {
 		await fundingManager.setPikaPerp(trading.address);
 
 		const pikaFeeRewardContract = await ethers.getContractFactory("PikaFeeReward");
-		pikaFeeReward = await pikaFeeRewardContract.deploy(pika.address, usdc.address, 1000000);
+		pikaFeeReward = await pikaFeeRewardContract.deploy(pika.address, usdc.address);
 		const vaultFeeRewardContract = await ethers.getContractFactory("VaultFeeReward");
 		vaultFeeReward = await vaultFeeRewardContract.deploy(trading.address, usdc.address, 1000000);
 		const mockRewardTokenContract = await ethers.getContractFactory("TestUSDC");
@@ -593,7 +593,6 @@ describe("Trading", () => {
 			// let ethAmount = (BigNumber.from(amount).mul(BigNumber.from("10010000000")));
 			await usdc.connect(account1).approve(orderbook.address, "10000000000000000000000")
 			// create open order
-			console.log("yo")
 			await orderbook.connect(account1).createOpenOrder(account1.address, 1, amount, leverage,  true, "300000000000", false, "100000", {from: account1.address, value:
 				executionFee, gasPrice: gasPrice})
 
@@ -616,7 +615,6 @@ describe("Trading", () => {
 			await orderbook.connect(account1).updateOpenOrder(1, "200000000", "300100000000", false);
 			// execute open order
 			await orderbook.connect(account2).executeOrdersWithPrices([], [proxyAccount1], [1], [], [], account2.address);
-			console.log("proxy", proxyAccount1)
 			const position1 = await trading.getPosition(proxyAccount1, 1, true);
 			expect(position1[0]).to.equal(productId);
 			expect(position1[5]).to.equal(proxyAccount1);
