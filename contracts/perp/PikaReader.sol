@@ -17,7 +17,7 @@ contract PikaReader {
         uint256 length = _productIds.length;
         openInterests = new uint256[](length);
         for (uint256 i = 0; i < length; i++) {
-            (,,,,uint256 longOI, uint256 shortOI,,,)= IPikaPerp(pikaPerp).getProduct(_productIds[i]);
+            (,,,,uint256 longOI, uint256 shortOI,,)= IPikaPerp(pikaPerp).getProduct(_productIds[i]);
             openInterests[i] = longOI + shortOI;
         }
     }

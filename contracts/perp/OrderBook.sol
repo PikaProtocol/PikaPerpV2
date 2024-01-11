@@ -48,7 +48,6 @@ contract OrderBook is Governable, ReentrancyGuard {
     mapping (address => mapping(uint256 => CloseOrder)) public closeOrders;
     mapping (address => uint256) public closeOrdersIndex;
     mapping (address => bool) public isKeeper;
-    mapping (address => bool) public managers;
     mapping (address => mapping (address => bool)) public approvedManagers;
 
     address public immutable pikaPerp;
@@ -231,11 +230,6 @@ contract OrderBook is Governable, ReentrancyGuard {
         emit UpdateFeeBase(_feeBase);
     }
 
-    function setManager(address _manager, bool _isActive) external onlyAdmin {
-        managers[_manager] = _isActive;
-        emit SetManager(_manager, _isActive);
-    }
-
     function setAccountManager(address _manager, bool _isActive) external {
         approvedManagers[msg.sender][_manager] = _isActive;
         emit SetAccountManager(msg.sender, _manager, _isActive);
@@ -323,7 +317,7 @@ contract OrderBook is Governable, ReentrancyGuard {
         uint256 _triggerPrice,
         uint256 _productId
     ) public view returns (uint256, bool) {
-        (address productToken,,,,,,,,) = IPikaPerp(pikaPerp).getProduct(_productId);
+        (address productToken,,,,,,,) = IPikaPerp(pikaPerp).getProduct(_productId);
         uint256 currentPrice = _isLong ? IOracle(oracle).getPrice(productToken, true) : IOracle(oracle).getPrice(productToken, false);
         bool isPriceValid = _triggerAboveThreshold ? currentPrice >= _triggerPrice : currentPrice <= _triggerPrice;
         require(isPriceValid, "OrderBook: invalid price for execution");
@@ -726,12 +720,12 @@ contract OrderBook is Governable, ReentrancyGuard {
     }
 
     function _getTradeFeeRate(uint256 _productId, address _account) private returns(uint256) {
-        (address productToken,,uint256 fee,,,,,,) = IPikaPerp(pikaPerp).getProduct(_productId);
+        (address productToken,,uint256 fee,,,,,) = IPikaPerp(pikaPerp).getProduct(_productId);
         return IFeeCalculator(feeCalculator).getFeeRate(productToken, fee, _account, msg.sender);
     }
 
     function _validateManager(address _account) private view returns(bool) {
-        return managers[msg.sender] && approvedManagers[_account][msg.sender];
+        return approvedManagers[_account][msg.sender];
     }
 
     function _validatePosition(address _account, uint256 _productId, bool _isLong) private view returns(bool) {

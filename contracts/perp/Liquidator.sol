@@ -90,7 +90,7 @@ contract Liquidator is Governable {
         if (_productId == 0) {
             return false;
         }
-        (address productToken,,,,,,,,) = IPikaPerp(pikaPerp).getProduct(productId);
+        (address productToken,,,,,,,) = IPikaPerp(pikaPerp).getProduct(productId);
         int256 fundingRate = IFundingManager(fundingManager).getFundingRate(productId);
         int256 fundingChange = fundingRate * int256(block.timestamp - FundingManager(fundingManager).lastUpdateTimes(productId)) / int256(365 days);
         int256 prevCumFunding = FundingManager(fundingManager).cumulativeFundings(productId);

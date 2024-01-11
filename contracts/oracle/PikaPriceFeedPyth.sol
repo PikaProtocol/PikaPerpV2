@@ -13,6 +13,7 @@ contract PikaPriceFeedPyth is Governable {
 
     address public owner;
     address public pyth;
+    address public sequencerUptimeFeed;
     uint256 public priceDuration = 20; // 20 seconds
     mapping (address => uint256) public maxPriceDiffs;
     mapping (address => uint256) public spreads;
@@ -22,6 +23,9 @@ contract PikaPriceFeedPyth is Governable {
     bool public isSpreadEnabled = false;
     uint256 public defaultMaxPriceDiff = 2e16; // 2%
     uint256 public defaultSpread = 30; // 0.3%
+
+    error SequencerDown();
+    error GracePeriodNotOver();
 
     event PythSet(address pyth);
     event PriceDurationSet(uint256 priceDuration);
@@ -37,9 +41,11 @@ contract PikaPriceFeedPyth is Governable {
 
     uint256 public constant MAX_PRICE_DURATION = 30 minutes;
     uint256 public constant PRICE_BASE = 10000;
+    uint256 private constant GRACE_PERIOD_TIME = 3600;
 
-    constructor() {
+    constructor(address _sequencerUptimeFeed) {
         owner = msg.sender;
+        sequencerUptimeFeed = _sequencerUptimeFeed;
     }
 
     function getPrice(address token, bool isMax) external view returns (uint256) {
@@ -80,6 +86,20 @@ contract PikaPriceFeedPyth is Governable {
 
     function getChainlinkPrice(address token) public view returns (uint256 priceToReturn, uint256 chainlinkTimestamp) {
         require(token != address(0), '!feed-error');
+
+        (,int256 answer,uint256 startedAt,,) = AggregatorV2V3Interface(sequencerUptimeFeed).latestRoundData();
+
+        // Answer == 0: Sequencer is up
+        // Answer == 1: Sequencer is down
+        if (answer != 0) {
+            revert SequencerDown();
+        }
+
+        // Make sure the grace period has passed after the
+        // sequencer is back up.
+        if (block.timestamp - startedAt <= GRACE_PERIOD_TIME) {
+            revert GracePeriodNotOver();
+        }
 
         (,int256 price,,uint256 timeStamp,) = AggregatorV3Interface(token).latestRoundData();
 

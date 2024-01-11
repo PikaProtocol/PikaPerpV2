@@ -43,7 +43,7 @@ contract FundingManager is Governable {
     }
 
     function getFundingRate(uint256 _productId) public view returns(int256) {
-        (,,,,uint256 openInterestLong, uint256 openInterestShort,,uint256 productWeight,) = IPikaPerp(pikaPerp).getProduct(_productId);
+        (,,,,uint256 openInterestLong, uint256 openInterestShort,uint256 productWeight,) = IPikaPerp(pikaPerp).getProduct(_productId);
         uint256 maxExposure = IPikaPerp(pikaPerp).getMaxExposure(productWeight);
         uint256 fundingMultiplier = Math.max(fundingMultipliers[_productId], minFundingMultiplier);
         if (openInterestLong > openInterestShort) {

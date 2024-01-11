@@ -35,7 +35,7 @@ interface IPikaPerp {
     ) external;
     function liquidatePositions(uint256[] calldata positionIds) external;
     function getProduct(uint256 productId) external view returns (
-        address,uint256,uint256,bool,uint256,uint256,uint256,uint256,uint256);
+        address,uint256,uint256,bool,uint256,uint256,uint256,uint256);
     function getPosition(
         address account,
         uint256 productId,

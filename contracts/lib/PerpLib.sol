@@ -36,6 +36,9 @@ library PerpLib {
         uint256 margin,
         uint256 price
     ) internal view returns(int256 _pnl) {
+        if (positionPrice == 0) {
+            return 0;
+        }
         bool pnlIsNegative;
         uint256 pnl;
         if (isLong) {

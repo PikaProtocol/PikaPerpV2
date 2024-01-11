@@ -115,7 +115,7 @@ contract PositionRouter {
     }
 
     function _getTradeFee(uint256 margin, uint256 leverage, uint256 _productId, address _account) private returns(uint256) {
-        (address productToken,,uint256 fee,,,,,,) = IPikaPerp(pikaPerp).getProduct(_productId);
+        (address productToken,,uint256 fee,,,,,) = IPikaPerp(pikaPerp).getProduct(_productId);
         return IFeeCalculator(feeCalculator).getFee(margin, leverage, productToken, fee, _account, msg.sender);
     }
 }

@@ -6,7 +6,6 @@ import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
-import "./IPikaPerp.sol";
 import '../lib/UniERC20.sol';
 import "./IPikaPerp.sol";
 import "./PikaPerpV4.sol";
@@ -81,7 +80,6 @@ contract PositionManager is Governable, ReentrancyGuard {
     mapping (address => uint256) public closePositionsIndex;
     mapping (bytes32 => ClosePositionRequest) public closePositionRequests;
 
-    mapping (address => bool) public managers;
     mapping (address => mapping (address => bool)) public approvedManagers;
 
     event CreateOpenPosition(
@@ -259,12 +257,6 @@ contract PositionManager is Governable, ReentrancyGuard {
     function setAllowUserCloseOnly(bool _allowUserCloseOnly) external onlyAdmin {
         allowUserCloseOnly = _allowUserCloseOnly;
         emit SetAllowUserCloseOnly(_allowUserCloseOnly);
-    }
-
-
-    function setManager(address _manager, bool _isActive) external onlyAdmin {
-        managers[_manager] = _isActive;
-        emit SetManager(_manager, _isActive);
     }
 
     function setAccountManager(address _manager, bool _isActive) external {
@@ -461,7 +453,7 @@ contract PositionManager is Governable, ReentrancyGuard {
         // if the request was already executed or cancelled, return true so that the executeOpenPositions loop will continue executing the next request
         if (request.account == address(0)) { return true; }
 
-        (address productToken,,,,,,,,) = IPikaPerp(pikaPerp).getProduct(request.productId);
+        (address productToken,,,,,,,) = IPikaPerp(pikaPerp).getProduct(request.productId);
         uint256 oraclePrice = request.isLong ? IOracle(oracle).getPrice(productToken, true) : IOracle(oracle).getPrice(productToken, false);
 
         if (!_validateExecution(request.blockNumber, request.blockTime, request.account, true, request.isLong, request.acceptablePrice, oraclePrice)) {
@@ -543,7 +535,7 @@ contract PositionManager is Governable, ReentrancyGuard {
         ClosePositionRequest memory request = closePositionRequests[_key];
         // if the request was already executed or cancelled, return true so that the executeClosePositions loop will continue executing the next request
         if (request.account == address(0)) { return true; }
-        (address productToken,,,,,,,,) = IPikaPerp(pikaPerp).getProduct(request.productId);
+        (address productToken,,,,,,,) = IPikaPerp(pikaPerp).getProduct(request.productId);
         uint256 oraclePrice = !request.isLong ? IOracle(oracle).getPrice(productToken, true) : IOracle(oracle).getPrice(productToken, false);
         bool shouldExecute = _validateExecution(request.blockNumber, request.blockTime, request.account, false, !request.isLong, request.acceptablePrice, oraclePrice);
         if (!shouldExecute) { return false; }
@@ -765,7 +757,7 @@ contract PositionManager is Governable, ReentrancyGuard {
     }
 
     function _validateManager(address _account) private view returns(bool) {
-        return managers[msg.sender] && approvedManagers[_account][msg.sender];
+        return approvedManagers[_account][msg.sender];
     }
 
     function _setTraderReferralCode(bytes32 _referralCode) internal {
@@ -775,7 +767,7 @@ contract PositionManager is Governable, ReentrancyGuard {
     }
 
     function _getTradeFee(uint256 margin, uint256 leverage, uint256 _productId, address _account) private returns(uint256) {
-        (address productToken,,uint256 fee,,,,,,) = IPikaPerp(pikaPerp).getProduct(_productId);
+        (address productToken,,uint256 fee,,,,,) = IPikaPerp(pikaPerp).getProduct(_productId);
         return IFeeCalculator(feeCalculator).getFee(margin, leverage, productToken, fee, _account, msg.sender);
     }
 

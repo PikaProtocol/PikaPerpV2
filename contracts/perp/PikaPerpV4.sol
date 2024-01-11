@@ -9,6 +9,7 @@ import '../lib/UniERC20.sol';
 import '../lib/PerpLib.sol';
 import './IPikaPerp.sol';
 import './IFundingManager.sol';
+import './IPendingPnlManager.sol';
 import '../staking/IVaultReward.sol';
 
 contract PikaPerpV4 is ReentrancyGuard {
@@ -46,7 +47,6 @@ contract PikaPerpV4 is ReentrancyGuard {
         // 32 bytes
         uint64 openInterestLong;
         uint64 openInterestShort;
-        uint32 minPriceChange; // 1.5%, the minimum oracle price up change for trader to close trade with profit
         uint32 weight; // share of the max exposure
         uint64 reserve; // Virtual reserve used to calculate slippage
     }
@@ -63,8 +63,7 @@ contract PikaPerpV4 is ReentrancyGuard {
         // 32 bytes
         address owner;
         bool isLong;
-        bool isNextPrice;
-        uint80 timestamp;
+        uint88 timestamp;
     }
 
     // Variables
@@ -80,12 +79,12 @@ contract PikaPerpV4 is ReentrancyGuard {
     address public vaultTokenReward;
     address public feeCalculator;
     address public fundingManager;
+    address public pendingPnlManager;
     uint256 private tokenBase;
     uint256 public minMargin;
     uint256 public protocolRewardRatio = 2000;  // 20%
     uint256 public pikaRewardRatio = 3000;  // 30%
     uint256 public maxShift = 0.003e8; // max shift (shift is used adjust the price to balance the longs and shorts)
-    uint256 public minProfitTime = 12 hours; // the time window where minProfit is effective
     uint256 public totalWeight; // total exposure weights of all product
     uint256 public exposureMultiplier = 10000; // exposure multiplier
     uint256 public utilizationMultiplier = 10000; // exposure multiplier
@@ -107,7 +106,6 @@ contract PikaPerpV4 is ReentrancyGuard {
     mapping(address => Stake) private stakes;
     mapping(uint256 => Position) private positions;
     mapping (address => bool) public liquidators;
-    mapping (address => bool) public nextPriceManagers;
     mapping (address => bool) public managers;
     mapping (address => mapping (address => bool)) public approvedManagers;
     // Events
@@ -135,7 +133,6 @@ contract PikaPerpV4 is ReentrancyGuard {
         uint256 margin,
         uint256 leverage,
         uint256 fee,
-        bool isNextPrice,
         int256 funding
     );
 
@@ -193,7 +190,8 @@ contract PikaPerpV4 is ReentrancyGuard {
     event AddressesSet(
         address oracle,
         address feeCalculator,
-        address fundingManager
+        address fundingManager,
+        address pendingPnlManager
     );
     event OwnerUpdated(
         address newOwner
@@ -226,7 +224,7 @@ contract PikaPerpV4 is ReentrancyGuard {
         IVaultReward(vaultTokenReward).updateReward(user);
         IERC20(token).uniTransferFromSenderToThis(amount * tokenBase / BASE);
         require(uint256(vault.staked) + amount <= uint256(vault.cap), "!cap");
-        uint256 shares = vault.staked > 0 ? amount * uint256(vault.shares) / uint256(vault.balance) : amount;
+        uint256 shares = vault.staked > 0 ? amount * uint256(vault.shares) / uint256(uint128(int128(vault.balance) - int128(IPendingPnlManager(pendingPnlManager).getTotalPendingPnl()))) : amount;
         vault.balance += uint128(amount);
         vault.staked += uint96(amount);
         vault.shares += uint96(shares);
@@ -273,7 +271,7 @@ contract PikaPerpV4 is ReentrancyGuard {
         uint256 timeDiff = block.timestamp - uint256(_stake.timestamp);
         require(timeDiff > uint256(vault.stakingPeriod), "!period");
 
-        uint256 shareBalance = shares * uint256(vault.balance) / uint256(vault.shares);
+        uint256 shareBalance = shares * uint256(uint128(int128(vault.balance) - int128(IPendingPnlManager(pendingPnlManager).getTotalPendingPnl())))  / uint256(vault.shares);
 
         uint256 amount = shares * _stake.amount / uint256(_stake.shares);
 
@@ -323,6 +321,7 @@ contract PikaPerpV4 is ReentrancyGuard {
         IERC20(token).uniTransferFromSenderToThis((margin + tradeFee) * tokenBase / BASE);
 
         _updatePendingRewards(tradeFee);
+        IPendingPnlManager(pendingPnlManager).updatePendingPnl(productId);
 
         uint256 price = _calculatePrice(isLong, product.openInterestLong, product.openInterestShort,
             uint256(vault.balance) * uint256(product.weight) * exposureMultiplier / uint256(totalWeight) / (10**4),
@@ -350,9 +349,6 @@ contract PikaPerpV4 is ReentrancyGuard {
         oraclePrice: uint64(oraclePrice),
         timestamp: uint80(block.timestamp),
         isLong: isLong,
-        // if no existing position, isNextPrice depends on if sender is a nextPriceManager,
-        // else it is false if either existing position's isNextPrice is false or the current new position sender is not a nextPriceManager
-        isNextPrice: position.margin == 0 ? nextPriceManagers[msg.sender] : (!position.isNextPrice ? false : nextPriceManagers[msg.sender]),
         funding: int128(funding)
         });
         emit NewPosition(
@@ -365,7 +361,6 @@ contract PikaPerpV4 is ReentrancyGuard {
             margin,
             leverage,
             tradeFee,
-            position.margin == 0 ? nextPriceManagers[msg.sender] : (!position.isNextPrice ? false : nextPriceManagers[msg.sender]),
             funding
         );
     }
@@ -384,7 +379,7 @@ contract PikaPerpV4 is ReentrancyGuard {
         } else {
             int256 fundingPayment = PerpLib._getFundingPayment(fundingManager, position.isLong, position.productId, position.leverage, position.margin, position.funding);
             int256 pnl = PerpLib._getPnl(position.isLong, position.price, position.leverage, position.margin, IOracle(oracle).getPrice(product.productToken)) - fundingPayment;
-            require (pnl > 0 || uint256(-1 * pnl) < uint256(position.margin) * liquidationThreshold / (10**4), "liquidatable");
+            require (pnl > 0 || uint256(-1 * pnl) < (uint256(position.margin) - margin) * liquidationThreshold / (10**4), "liquidatable");
             newMargin = uint256(position.margin) - margin;
             require(newMargin >= minMargin, "!margin");
             IERC20(token).uniTransfer(msg.sender, margin * tokenBase / BASE);
@@ -449,13 +444,6 @@ contract PikaPerpV4 is ReentrancyGuard {
             margin = uint256(position.margin);
             pnl = -1 * int256(uint256(position.margin));
             isLiquidatable = true;
-        } else {
-            // front running protection: if oracle price up change is smaller than threshold and minProfitTime has not passed
-            // and either open or close order is not using next oracle price, the pnl is be set to 0
-            if (pnl > 0 && !PerpLib._canTakeProfit(position.isLong, uint256(position.timestamp), uint256(position.oraclePrice),
-                IOracle(oracle).getPrice(product.productToken), product.minPriceChange, minProfitTime) && (!position.isNextPrice || !nextPriceManagers[msg.sender])) {
-                pnl = 0;
-            }
         }
 
         uint256 totalFee = _updateVaultAndGetFee(pnl, position, margin, uint256(product.fee), product.productToken);
@@ -479,6 +467,8 @@ contract PikaPerpV4 is ReentrancyGuard {
         } else {
             position.margin -= uint128(margin);
         }
+
+        IPendingPnlManager(pendingPnlManager).updatePendingPnl(uint256(position.productId));
     }
 
     function _updateVaultAndGetFee(
@@ -556,6 +546,8 @@ contract PikaPerpV4 is ReentrancyGuard {
         } else {
             vault.balance += uint128(position.margin);
         }
+
+        IPendingPnlManager(pendingPnlManager).updatePendingPnl(uint256(position.productId));
 
         emit ClosePosition(
             positionId,
@@ -678,7 +670,7 @@ contract PikaPerpV4 is ReentrancyGuard {
     }
 
     function getProduct(uint256 productId) external view returns (
-        address,uint256,uint256,bool,uint256,uint256,uint256,uint256,uint256
+        address,uint256,uint256,bool,uint256,uint256,uint256,uint256
     ) {
         Product memory product = products[productId];
         return (
@@ -688,7 +680,6 @@ contract PikaPerpV4 is ReentrancyGuard {
         product.isActive,
         uint256(product.openInterestLong),
         uint256(product.openInterestShort),
-        uint256(product.minPriceChange),
         uint256(product.weight),
         uint256(product.reserve));
     }
@@ -794,7 +785,6 @@ contract PikaPerpV4 is ReentrancyGuard {
         isActive: true,
         openInterestLong: 0,
         openInterestShort: 0,
-        minPriceChange: _product.minPriceChange,
         weight: _product.weight,
         reserve: _product.reserve
         });
@@ -814,7 +804,6 @@ contract PikaPerpV4 is ReentrancyGuard {
         product.maxLeverage = _product.maxLeverage;
         product.fee = _product.fee;
         product.isActive = _product.isActive;
-        product.minPriceChange = _product.minPriceChange;
         totalWeight = totalWeight - product.weight + _product.weight;
         product.weight = _product.weight;
         product.reserve = _product.reserve;
@@ -864,7 +853,6 @@ contract PikaPerpV4 is ReentrancyGuard {
 
     function setParameters(
         uint256 _maxShift,
-        uint256 _minProfitTime,
         bool _canUserStake,
         bool _allowPublicLiquidator,
         uint256 _exposureMultiplier,
@@ -875,9 +863,8 @@ contract PikaPerpV4 is ReentrancyGuard {
         uint256 _shiftDivider
     ) external {
         onlyOwner();
-        require(_maxShift <= 0.01e8 && _minProfitTime <= 24 hours && _shiftDivider > 0 && _liquidationThreshold > 5000 && _maxExposureMultiplier > 0);
+        require(_maxShift <= 0.01e8 && _shiftDivider > 0 && _liquidationThreshold > 5000 && _maxExposureMultiplier > 0);
         maxShift = _maxShift;
-        minProfitTime = _minProfitTime;
         canUserStake = _canUserStake;
         allowPublicLiquidator = _allowPublicLiquidator;
         exposureMultiplier = _exposureMultiplier;
@@ -888,22 +875,18 @@ contract PikaPerpV4 is ReentrancyGuard {
         shiftDivider = _shiftDivider;
     }
 
-    function setAddresses(address _oracle, address _feeCalculator, address _fundingManager) external {
+    function setAddresses(address _oracle, address _feeCalculator, address _fundingManager, address _pendingPnlManager) external {
         onlyOwner();
         oracle = _oracle;
         feeCalculator = _feeCalculator;
         fundingManager = _fundingManager;
-        emit AddressesSet(_oracle, _feeCalculator, _fundingManager);
+        pendingPnlManager = _pendingPnlManager;
+        emit AddressesSet(_oracle, _feeCalculator, _fundingManager, _pendingPnlManager);
     }
 
     function setLiquidator(address _liquidator, bool _isActive) external {
         onlyOwner();
         liquidators[_liquidator] = _isActive;
-    }
-
-    function setNextPriceManager(address _nextPriceManager, bool _isActive) external {
-        onlyOwner();
-        nextPriceManagers[_nextPriceManager] = _isActive;
     }
 
     function setOwner(address _owner) external {
