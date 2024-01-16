@@ -378,7 +378,8 @@ contract PikaPerpV4 is ReentrancyGuard {
             newMargin = uint256(position.margin) + margin;
         } else {
             int256 fundingPayment = PerpLib._getFundingPayment(fundingManager, position.isLong, position.productId, position.leverage, position.margin, position.funding);
-            int256 pnl = PerpLib._getPnl(position.isLong, position.price, position.leverage, position.margin, IOracle(oracle).getPrice(product.productToken)) - fundingPayment;
+            uint256 price = position.isLong ? IOracle(oracle).getPrice(product.productToken, true) : IOracle(oracle).getPrice(product.productToken, false);
+            int256 pnl = PerpLib._getPnl(position.isLong, position.price, position.leverage, position.margin, price) - fundingPayment;
             require (pnl > 0 || uint256(-1 * pnl) < (uint256(position.margin) - margin) * liquidationThreshold / (10**4), "liquidatable");
             newMargin = uint256(position.margin) - margin;
             require(newMargin >= minMargin, "!margin");
