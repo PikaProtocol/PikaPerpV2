@@ -219,7 +219,7 @@ contract PikaPerpV4 is ReentrancyGuard {
     // Methods
 
     function stake(uint256 amount, address user) external payable nonReentrant {
-        require((canUserStake || msg.sender == owner) && (msg.sender == user || _validateManager(user)), "!stake");
+        require(amount >= BASE && (canUserStake || msg.sender == owner) && (msg.sender == user || _validateManager(user)), "!stake");
         IVaultReward(vaultRewardDistributor).updateReward(user);
         IVaultReward(vaultTokenReward).updateReward(user);
         IERC20(token).uniTransferFromSenderToThis(amount * tokenBase / BASE);
@@ -367,7 +367,7 @@ contract PikaPerpV4 is ReentrancyGuard {
 
     // Add margin to Position with positionId
     function modifyMargin(uint256 positionId, uint256 margin, bool shouldIncrease) external payable nonReentrant {
-
+        require(margin >= BASE, "!margin");
         // Check position
         Position storage position = positions[positionId];
         require(msg.sender == position.owner || _validateManager(position.owner), "!allow");
