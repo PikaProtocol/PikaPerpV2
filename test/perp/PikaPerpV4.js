@@ -116,6 +116,7 @@ describe("Trading", () => {
 		pendingPnlManager = await pendingPnlManagerContract.deploy(trading.address, oracle.address, fundingManager.address);
 		await pendingPnlManager.setMaxProductId(1);
 		await fundingManager.setPikaPerp(trading.address);
+		await fundingManager.setPendingPnlManager(pendingPnlManager.address);
 
 		const pikaFeeRewardContract = await ethers.getContractFactory("PikaFeeReward");
 		pikaFeeReward = await pikaFeeRewardContract.deploy(pika.address, usdc.address);
@@ -260,6 +261,8 @@ describe("Trading", () => {
 			const position4 = (await trading.getPositions([positionId]))[0];
 			expect(position4.leverage).to.equal(leverage);
 
+			console.log("1st open pending pnl",(await pendingPnlManager.getTotalPendingPnl()).toString());
+
 			// 2. increase position
 			const leverage2 = parseUnits(20)
 			latestPrice = 3050e8;
@@ -271,6 +274,8 @@ describe("Trading", () => {
 			expect(position2.leverage).to.equal(leverage*1.5);
 			// expect(position2.funding).to.equal(63); // 95*2/3
 			assertAlmostEqual(position2.price, (3/(1/price1+2/price2)).toFixed(0));
+
+			console.log("2 increase pending pnl",(await pendingPnlManager.getTotalPendingPnl()).toString());
 
 			// await provider.send("evm_increaseTime", [100])
 			// await trading.connect(addrs[userId]).openPosition(addrs[userId].address, productId, margin, true, leverage2.toString());
@@ -286,8 +291,14 @@ describe("Trading", () => {
 			latestPrice = 3029e8;
 			const price3 = _calculatePrice(oracle.address, false, 3*margin*leverage/1e8, 0, parseFloat((await trading.getVault()).balance), 50000000e8, 3*margin*leverage/1e8);
 			await oracle.setPrice(3029e8);
+			console.log("3 before close pending pnl",(await pendingPnlManager.getTotalPendingPnl()).toString(), (await pendingPnlManager.getPnlFundingChangeAndPrice(productId)).toString());
+			console.log("pendingpnl", (await pendingPnlManager.getPendingPnl(productId)).toString());
 			const totalFee = parseInt(3*margin*leverage/1e8*0.001 + getInterestFee(3*margin, leverage, 0, 500));
 			const tx3 = await trading.connect(testManager).closePositionWithId(positionId, 3*margin, latestPrice);
+
+			console.log("4 close pending pnl",(await pendingPnlManager.getTotalPendingPnl()).toString());
+			console.log("pendingpnl", (await pendingPnlManager.getPendingPnl(productId)).toString());
+
 			// await expect(tx3).to.emit(trading, "ClosePosition").withArgs(positionId, user, productId, price3.toString(), position2.price, (2*margin).toString(), (leverage*1.5).toString(), totalFee.toString(), 0, 127720499, false);
 			// console.log("after close long", (await usdc.balanceOf(trading.address)).toString());
 			// console.log("vault balance", (await trading.getVault()).balance.toString());
@@ -462,7 +473,7 @@ describe("Trading", () => {
 			await trading.connect(addrs[1]).stake(amount, addrs[1].address);
 
 			const pendingPnl = await pendingPnlManager.getTotalPendingPnl();
-
+			console.log("pendingpnl", pendingPnl.toString());
 			const stake0 = await trading.getStake(owner.address);
 			const stake1 = await trading.getStake(addrs[1].address);
 			expect(stake0.shares).to.equal(BigNumber.from(vault1.shares))

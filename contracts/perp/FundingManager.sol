@@ -8,6 +8,7 @@ import "@openzeppelin/contracts/utils/math/SignedSafeMath.sol";
 contract FundingManager is Governable {
 
     address public pikaPerp;
+    address public pendingPnlManager;
     address public owner;
 
     constructor() public {
@@ -25,12 +26,13 @@ contract FundingManager is Governable {
 
     event FundingUpdated(uint256 productId, int256 fundingRate, int256 fundingChange, int256 cumulativeFunding);
     event PikaPerpSet(address pikaPerp);
+    event PendingPnlManagerSet(address pendingPnlManager);
     event MinFundingMultiplierSet(uint256 minFundingMultiplier);
     event FundingMultiplierSet(uint256 productId, uint256 fundingMultiplier);
     event MaxFundingRateSet(uint256 maxFundingRate);
 
     function updateFunding(uint256 _productId) external {
-        require(msg.sender == pikaPerp, "FundingManager: !pikaPerp");
+        require(msg.sender == pendingPnlManager, "FundingManager: !pendingPnlManager");
         if (lastUpdateTimes[_productId] == 0) {
             lastUpdateTimes[_productId] = block.timestamp;
             return;
@@ -53,6 +55,11 @@ contract FundingManager is Governable {
         }
     }
 
+    function getFundingChange(uint256 _productId) external view returns(int256) {
+        int256 fundingRate = getFundingRate(_productId);
+        return fundingRate * int256(block.timestamp - lastUpdateTimes[_productId]) / int256(365 days);
+    }
+
     function getFunding(uint256 _productId) external view returns(int256) {
         return cumulativeFundings[_productId];
     }
@@ -60,6 +67,11 @@ contract FundingManager is Governable {
     function setPikaPerp(address _pikaPerp) external onlyOwner {
         pikaPerp = _pikaPerp;
         emit PikaPerpSet(_pikaPerp);
+    }
+
+    function setPendingPnlManager(address _pendingPnlManager) external onlyOwner {
+        pendingPnlManager = _pendingPnlManager;
+        emit PendingPnlManagerSet(_pendingPnlManager);
     }
 
     function setMinFundingMultiplier(uint256 _minFundingMultiplier) external onlyOwner {

@@ -82,7 +82,7 @@ contract Liquidator is Governable {
         delete positionIds;
     }
 
-    function canLiquidate(address account, uint256 productId, bool isLong) public returns(bool) {
+    function canLiquidate(address account, uint256 productId, bool isLong) public view returns(bool) {
         if (account == lockedAccount) {
             return false;
         }
