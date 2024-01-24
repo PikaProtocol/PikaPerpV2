@@ -9,7 +9,6 @@ import '../lib/UniERC20.sol';
 import '../lib/PerpLib.sol';
 import './IPikaPerp.sol';
 import './IFundingManager.sol';
-import './IPendingPnlManager.sol';
 import '../staking/IVaultReward.sol';
 
 contract PikaPerpV4 is ReentrancyGuard {
@@ -79,7 +78,6 @@ contract PikaPerpV4 is ReentrancyGuard {
     address public vaultTokenReward;
     address public feeCalculator;
     address public fundingManager;
-    address public pendingPnlManager;
     uint256 private tokenBase;
     uint256 public minMargin;
     uint256 public protocolRewardRatio = 2000;  // 20%
@@ -96,6 +94,9 @@ contract PikaPerpV4 is ReentrancyGuard {
     uint256 private pendingVaultReward; // vault reward collected
     uint256 public totalOpenInterest;
     uint256 public shiftDivider = 3;
+    uint256 public lastDistributedTime; // last time when buffer balance is distributed
+    uint256 public bufferPeriod = 3 days; // 3 days
+    int256 public bufferBalance; // buffer balance to be distributed to vault balance linearly for the duration of bufferPeriod
     bool private canUserStake = true;
     bool private allowPublicLiquidator = false;
     bool private isTradeEnabled = true;
@@ -190,8 +191,7 @@ contract PikaPerpV4 is ReentrancyGuard {
     event AddressesSet(
         address oracle,
         address feeCalculator,
-        address fundingManager,
-        address pendingPnlManager
+        address fundingManager
     );
     event OwnerUpdated(
         address newOwner
@@ -222,9 +222,10 @@ contract PikaPerpV4 is ReentrancyGuard {
         require(amount >= BASE && (canUserStake || msg.sender == owner) && (msg.sender == user || _validateManager(user)), "!stake");
         IVaultReward(vaultRewardDistributor).updateReward(user);
         IVaultReward(vaultTokenReward).updateReward(user);
+        _distributeBuffer();
         IERC20(token).uniTransferFromSenderToThis(amount * tokenBase / BASE);
         require(uint256(vault.staked) + amount <= uint256(vault.cap), "!cap");
-        uint256 shares = vault.staked > 0 ? amount * uint256(vault.shares) / uint256(uint128(int128(vault.balance) - int128(IPendingPnlManager(pendingPnlManager).getTotalPendingPnl()))) : amount;
+        uint256 shares = vault.staked > 0 ? amount * uint256(vault.shares) / uint256(vault.balance) : amount;
         vault.balance += uint128(amount);
         vault.staked += uint96(amount);
         vault.shares += uint96(shares);
@@ -262,6 +263,7 @@ contract PikaPerpV4 is ReentrancyGuard {
 
         IVaultReward(vaultRewardDistributor).updateReward(user);
         IVaultReward(vaultTokenReward).updateReward(user);
+        _distributeBuffer();
         Stake storage _stake = stakes[user];
         bool isFullRedeem = shares >= uint256(_stake.shares);
         if (isFullRedeem) {
@@ -271,7 +273,7 @@ contract PikaPerpV4 is ReentrancyGuard {
         uint256 timeDiff = block.timestamp - uint256(_stake.timestamp);
         require(timeDiff > uint256(vault.stakingPeriod), "!period");
 
-        uint256 shareBalance = shares * uint256(uint128(int128(vault.balance) - int128(IPendingPnlManager(pendingPnlManager).getTotalPendingPnl())))  / uint256(vault.shares);
+        uint256 shareBalance = shares * uint256(vault.balance) / uint256(vault.shares);
 
         uint256 amount = shares * _stake.amount / uint256(_stake.shares);
 
@@ -321,7 +323,6 @@ contract PikaPerpV4 is ReentrancyGuard {
         IERC20(token).uniTransferFromSenderToThis((margin + tradeFee) * tokenBase / BASE);
 
         _updatePendingRewards(tradeFee);
-        IPendingPnlManager(pendingPnlManager).updatePendingPnl(productId);
 
         uint256 price = _calculatePrice(isLong, product.openInterestLong, product.openInterestShort,
             uint256(vault.balance) * uint256(product.weight) * exposureMultiplier / uint256(totalWeight) / (10**4),
@@ -377,6 +378,7 @@ contract PikaPerpV4 is ReentrancyGuard {
             IERC20(token).uniTransferFromSenderToThis(margin * tokenBase / BASE);
             newMargin = uint256(position.margin) + margin;
         } else {
+            IFundingManager(fundingManager).updateFunding(position.productId);
             int256 fundingPayment = PerpLib._getFundingPayment(fundingManager, position.isLong, position.productId, position.leverage, position.margin, position.funding);
             uint256 price = position.isLong ? IOracle(oracle).getPrice(product.productToken, true) : IOracle(oracle).getPrice(product.productToken, false);
             int256 pnl = PerpLib._getPnl(position.isLong, position.price, position.leverage, position.margin, price) - fundingPayment;
@@ -421,13 +423,13 @@ contract PikaPerpV4 is ReentrancyGuard {
         uint256 margin,
         uint256 oraclePrice
     ) public nonReentrant {
+        _distributeBuffer();
         // Check position
         Position storage position = positions[positionId];
         require(_validateManager(position.owner), "!close");
 
         // Check product
         Product storage product = products[uint256(position.productId)];
-
         bool isFullClose;
         if (margin >= uint256(position.margin)) {
             margin = uint256(position.margin);
@@ -468,8 +470,6 @@ contract PikaPerpV4 is ReentrancyGuard {
         } else {
             position.margin -= uint128(margin);
         }
-
-        IPendingPnlManager(pendingPnlManager).updatePendingPnl(uint256(position.productId));
     }
 
     function _updateVaultAndGetFee(
@@ -486,23 +486,23 @@ contract PikaPerpV4 is ReentrancyGuard {
             uint256 _pnlAfterFee = uint256(-1 * pnlAfterFee);
             if (_pnlAfterFee < margin) {
                 IERC20(token).uniTransfer(position.owner, (margin - _pnlAfterFee) * tokenBase / BASE);
-                vault.balance += uint128(_pnlAfterFee);
+                bufferBalance += int256(_pnlAfterFee);
             } else {
-                vault.balance += uint128(margin);
+                bufferBalance += int256(margin);
                 return totalFee;
             }
 
         } else {
             uint256 _pnlAfterFee = uint256(pnlAfterFee);
             // Check vault
-            require(uint256(vault.balance) >= _pnlAfterFee, "!bal");
-            vault.balance -= uint128(_pnlAfterFee);
+            require(uint256(int256(int128(vault.balance)) + bufferBalance) >= _pnlAfterFee, "!bal");
+            bufferBalance -= int256(_pnlAfterFee);
 
             IERC20(token).uniTransfer(position.owner, (margin + _pnlAfterFee) * tokenBase / BASE);
         }
 
         _updatePendingRewards(totalFee);
-        vault.balance -= uint128(totalFee);
+        bufferBalance -= int256(totalFee);
 
         return totalFee;
     }
@@ -510,7 +510,7 @@ contract PikaPerpV4 is ReentrancyGuard {
     // Liquidate positionIds
     function liquidatePositions(uint256[] calldata positionIds) external {
         require(liquidators[msg.sender] || allowPublicLiquidator, "!liquidator");
-
+        _distributeBuffer();
         uint256 totalLiquidatorReward;
         for (uint256 i = 0; i < positionIds.length; i++) {
             uint256 positionId = positionIds[i];
@@ -543,12 +543,10 @@ contract PikaPerpV4 is ReentrancyGuard {
             liquidatorReward = (uint256(position.margin) - _pnl) * liquidationBounty / (10**4);
             remainingReward = uint256(position.margin) - _pnl - liquidatorReward;
             _updatePendingRewards(remainingReward);
-            vault.balance += uint128(_pnl);
+            bufferBalance += int256(_pnl);
         } else {
-            vault.balance += uint128(position.margin);
+            bufferBalance += int256(int128(position.margin));
         }
-
-        IPendingPnlManager(pendingPnlManager).updatePendingPnl(uint256(position.productId));
 
         emit ClosePosition(
             positionId,
@@ -588,7 +586,7 @@ contract PikaPerpV4 is ReentrancyGuard {
         if (isIncrease) {
             totalOpenInterest = totalOpenInterest + amount;
             uint256 maxExposure = getMaxExposure(uint256(product.weight));
-            require(totalOpenInterest <= uint256(vault.balance) * utilizationMultiplier / 10**4 &&
+            require(totalOpenInterest <= uint256(int256(int128(vault.balance)) + bufferBalance) * utilizationMultiplier / 10**4 &&
                 uint256(product.openInterestLong) + uint256(product.openInterestShort) + amount < maxExposureMultiplier * maxExposure, "!maxOI");
             if (isLong) {
                 product.openInterestLong = product.openInterestLong + uint64(amount);
@@ -617,6 +615,13 @@ contract PikaPerpV4 is ReentrancyGuard {
 
     function _validateManager(address account) private view returns(bool) {
         return managers[msg.sender] && approvedManagers[account][msg.sender];
+    }
+
+    function _distributeBuffer() private {
+        int256 bufferToDistribute = getBufferToDistribute();
+        bufferBalance -= bufferToDistribute;
+        vault.balance = bufferToDistribute > 0 ? vault.balance + uint128(int128(bufferToDistribute)) : vault.balance - uint128(int128(-1 * bufferToDistribute));
+        lastDistributedTime = block.timestamp;
     }
 
     function distributeProtocolReward() external returns(uint256) {
@@ -653,6 +658,10 @@ contract PikaPerpV4 is ReentrancyGuard {
     }
 
     // Getters
+
+    function getBufferToDistribute() public view returns(int256) {
+        return block.timestamp - lastDistributedTime < bufferPeriod ? bufferBalance * int256(block.timestamp - lastDistributedTime) / int256(bufferPeriod) : bufferBalance;
+    }
 
     function getPendingPikaReward() external view returns(uint256) {
         return pendingPikaReward * tokenBase / BASE;
@@ -861,7 +870,8 @@ contract PikaPerpV4 is ReentrancyGuard {
         uint256 _maxExposureMultiplier,
         uint256 _liquidationBounty,
         uint256 _liquidationThreshold,
-        uint256 _shiftDivider
+        uint256 _shiftDivider,
+        uint256 _bufferPeriod
     ) external {
         onlyOwner();
         require(_maxShift <= 0.01e8 && _shiftDivider > 0 && _liquidationThreshold > 5000 && _maxExposureMultiplier > 0);
@@ -874,15 +884,15 @@ contract PikaPerpV4 is ReentrancyGuard {
         liquidationBounty = _liquidationBounty;
         liquidationThreshold = _liquidationThreshold;
         shiftDivider = _shiftDivider;
+        bufferPeriod = _bufferPeriod;
     }
 
-    function setAddresses(address _oracle, address _feeCalculator, address _fundingManager, address _pendingPnlManager) external {
+    function setAddresses(address _oracle, address _feeCalculator, address _fundingManager) external {
         onlyOwner();
         oracle = _oracle;
         feeCalculator = _feeCalculator;
         fundingManager = _fundingManager;
-        pendingPnlManager = _pendingPnlManager;
-        emit AddressesSet(_oracle, _feeCalculator, _fundingManager, _pendingPnlManager);
+        emit AddressesSet(_oracle, _feeCalculator, _fundingManager);
     }
 
     function setLiquidator(address _liquidator, bool _isActive) external {
