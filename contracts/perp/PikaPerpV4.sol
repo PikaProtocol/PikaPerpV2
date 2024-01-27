@@ -317,7 +317,8 @@ contract PikaPerpV4 is ReentrancyGuard {
         Product storage product = products[productId];
         require(product.isActive, "!active");
         require(leverage >=  BASE / 2 && leverage <= uint256(product.maxLeverage), "!lev");
-
+        // Distribute buffer
+        _distributeBuffer();
         // Transfer margin plus fee
         uint256 tradeFee = IFeeCalculator(feeCalculator).getFee(margin, leverage, product.productToken, uint256(product.fee), user, msg.sender);
         IERC20(token).uniTransferFromSenderToThis((margin + tradeFee) * tokenBase / BASE);
@@ -372,6 +373,7 @@ contract PikaPerpV4 is ReentrancyGuard {
         // Check position
         Position storage position = positions[positionId];
         require(msg.sender == position.owner || _validateManager(position.owner), "!allow");
+        _distributeBuffer();
         Product storage product = products[uint256(position.productId)];
         uint256 newMargin;
         if (shouldIncrease) {
