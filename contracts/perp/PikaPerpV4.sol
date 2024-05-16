@@ -329,7 +329,8 @@ contract PikaPerpV4 is ReentrancyGuard {
             uint256(vault.balance) * uint256(product.weight) * exposureMultiplier / uint256(totalWeight) / (10**4),
             uint256(product.reserve), margin * leverage / BASE, oraclePrice);
 
-        _updateFundingAndOpenInterest(productId, margin * leverage / BASE, isLong, true);
+        IFundingManager(fundingManager).updateFunding(productId);
+        _updateOpenInterest(productId, margin * leverage / BASE, isLong, true);
         int256 funding = IFundingManager(fundingManager).getFunding(productId);
 
         Position storage position = positions[getPositionId(user, productId, isLong)];
@@ -441,7 +442,7 @@ contract PikaPerpV4 is ReentrancyGuard {
         uint256 price = _calculatePrice(!position.isLong, product.openInterestLong, product.openInterestShort,
             getMaxExposure(uint256(product.weight)), uint256(product.reserve), margin * position.leverage / BASE, oraclePrice);
 
-        _updateFundingAndOpenInterest(uint256(position.productId), margin * uint256(position.leverage) / BASE, position.isLong, false);
+        IFundingManager(fundingManager).updateFunding(uint256(position.productId));
         int256 fundingPayment = PerpLib._getFundingPayment(fundingManager, position.isLong, position.productId, position.leverage, margin, position.funding);
         int256 pnl = PerpLib._getPnl(position.isLong, uint256(position.price), uint256(position.leverage), margin, price) - fundingPayment;
         bool isLiquidatable;
@@ -450,7 +451,7 @@ contract PikaPerpV4 is ReentrancyGuard {
             pnl = -1 * int256(uint256(position.margin));
             isLiquidatable = true;
         }
-
+        _updateOpenInterest(uint256(position.productId), margin * uint256(position.leverage) / BASE, position.isLong, false);
         uint256 totalFee = _updateVaultAndGetFee(pnl, position, margin, uint256(product.fee), product.productToken);
 
         emit ClosePosition(
@@ -536,7 +537,8 @@ contract PikaPerpV4 is ReentrancyGuard {
         uint256 price = IOracle(oracle).getPrice(product.productToken); // use oracle price for liquidation
 
         uint256 remainingReward;
-        _updateFundingAndOpenInterest(uint256(position.productId), uint256(position.margin) * uint256(position.leverage) / BASE, position.isLong, false);
+        IFundingManager(fundingManager).updateFunding(uint256(position.productId));
+        _updateOpenInterest(uint256(position.productId), uint256(position.margin) * uint256(position.leverage) / BASE, position.isLong, false);
         int256 fundingPayment = PerpLib._getFundingPayment(fundingManager, position.isLong, position.productId, position.leverage, position.margin, position.funding);
         int256 pnl = PerpLib._getPnl(position.isLong, position.price, position.leverage, position.margin, price) - fundingPayment;
         require (pnl < 0 && uint256(-1 * pnl) >= uint256(position.margin) * liquidationThreshold / (10**4));
@@ -582,8 +584,7 @@ contract PikaPerpV4 is ReentrancyGuard {
         pendingVaultReward = pendingVaultReward + (reward * (10**4 - protocolRewardRatio - pikaRewardRatio) / (10**4));
     }
 
-    function _updateFundingAndOpenInterest(uint256 productId, uint256 amount, bool isLong, bool isIncrease) private {
-        IFundingManager(fundingManager).updateFunding(productId);
+    function _updateOpenInterest(uint256 productId, uint256 amount, bool isLong, bool isIncrease) private {
         Product storage product = products[productId];
         if (isIncrease) {
             totalOpenInterest = totalOpenInterest + amount;
