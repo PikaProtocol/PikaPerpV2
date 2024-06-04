@@ -1,11 +1,4 @@
 # PikaPerpV2
 
-## Rinkeby 
-
-PikaPerpV2: 0x22d11584c4FEc68417468DAaCAcCdd4a1E2809d0       
-Oracle: 0x7CB5D785847028C51A7ADc253e21b3aC2582b40d  
-Pika: 0xF1b821742bf9164eE90bAaEbe703028d7FC566fa   
-PikaStaking: 0x0743366f9231cb1fD02408D5f55dB18f4Eb72bE2      
-VaultFeeReward: 0x4eaeED25ed00A5fdDbE305fFD5f7A5F452c0874d    
-VaultTokenReward: 0xE71a6ec784944EF058bc2D79b5EfD0aFd23B08D0 
+Please visit https://docs.pikaprotocol.com/contracts for the deployed addresses and documentation. The latest deployed repo is v3Audit2.
 
